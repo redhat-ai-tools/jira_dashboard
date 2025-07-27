@@ -25,7 +25,7 @@ server_params = {
     "url": "https://jira-mcp-snowflake.mcp-playground-poc.devshift.net/sse",
     "transport": "sse",
     "headers": {
-        "X-Snowflake-Token": "eyJraWQiOiI5Njc5NTgwNjgzNjkwMTY2IiwiYWxnIjoiRVMyNTYifQ.eyJwIjoiMTQ3Njk4Njg4OTc3OjE0NzY5ODY4NDgwNSIsImlzcyI6IlNGOjEwNDkiLCJleHAiOjE3NTYxOTQxNzB9.cUtiutMKOb1oldGHFhzmM3YbGtc8Fh9qUWNxvTaoC_NPXHd79ip6RU0o-7WHEE4_zbyvlZwscTh75XRjabw-0Q"
+        "X-Snowflake-Token": "token"
     }
 }
 
