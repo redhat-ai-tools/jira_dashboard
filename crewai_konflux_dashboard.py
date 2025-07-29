@@ -27,7 +27,7 @@ server_params = {
     "url": "https://jira-mcp-snowflake.mcp-playground-poc.devshift.net/sse",
     "transport": "sse",
     "headers": {
-        "X-Snowflake-Token": snowflake_token
+        "X-Snowflake-Token": snowflake_token 
     }
 }
 
@@ -138,25 +138,26 @@ def filter_konflux_project_summary(project_summary_data):
     except Exception as e:
         return {"error": f"Error filtering KONFLUX project summary: {str(e)}"}
 
-class CriticalBugCalculator:
-    """Critical bug calculation logic"""
+class BugCalculator:
+    """Universal bug calculation logic for any priority level"""
     
-    def __init__(self):
-        self.critical_priority_ids = ["2"]  # Critical priority only
+    def __init__(self, priority_ids, priority_name="Priority"):
+        """
+        Initialize calculator for specific priority levels
+        
+        Args:
+            priority_ids: List of priority IDs to track (e.g., ["2"] for Critical, ["1"] for Blocker)
+            priority_name: Human-readable name for the priority (e.g., "Critical", "Blocker")
+        """
+        self.priority_ids = priority_ids
+        self.priority_name = priority_name
         self.bug_type_ids = ["1"]  # Bug type only
-
-class BlockerBugCalculator:
-    """Blocker bug calculation logic"""
     
-    def __init__(self):
-        self.blocker_priority_ids = ["1"]  # Blocker priority only
-        self.bug_type_ids = ["1"]  # Bug type only
-    
-    def is_blocker_priority(self, priority):
-        """Check if priority ID indicates a blocker bug"""
+    def is_target_priority(self, priority):
+        """Check if priority ID matches our target priority"""
         if not priority:
             return False
-        return str(priority).strip() in self.blocker_priority_ids
+        return str(priority).strip() in self.priority_ids
     
     def is_bug_type(self, issue_type):
         """Check if issue type ID is a bug"""
@@ -252,183 +253,54 @@ class BlockerBugCalculator:
         
         return None
 
-    def calculate_blocker_bug_metrics(self, issues):
-        """Calculate the 3 key blocker bug metrics"""
+    def calculate_bug_metrics(self, issues):
+        """Calculate the 3 key bug metrics for the configured priority"""
+        priority_lower = self.priority_name.lower()
         metrics = {
-            'total_blocker_bugs': 0,
-            'total_blocker_bugs_resolved': 0,
-            'blocker_bugs_resolved_last_month': 0
+            f'total_{priority_lower}_bugs': 0,
+            f'total_{priority_lower}_bugs_resolved': 0,
+            f'{priority_lower}_bugs_resolved_last_month': 0
         }
         
-        blocker_bugs_fixed = []
+        bugs_fixed = []
         
         for issue in issues:
             issue_type = issue.get('issue_type', '')
             priority = issue.get('priority', '')
             resolution_date = issue.get('resolution_date', '')
             
-            # Check if it's a blocker bug
+            # Check if it's a target priority bug
             is_bug = self.is_bug_type(issue_type)
-            is_blocker = self.is_blocker_priority(priority) 
+            is_target_priority = self.is_target_priority(priority) 
             is_resolved = self.is_resolved(resolution_date)
             
-            if is_bug and is_blocker:
-                # 1. Total blocker bugs
-                metrics['total_blocker_bugs'] += 1
+            if is_bug and is_target_priority:
+                # 1. Total bugs of this priority
+                metrics[f'total_{priority_lower}_bugs'] += 1
                 
                 if is_resolved:
-                    # 2. Total blocker bugs resolved (ever)
-                    metrics['total_blocker_bugs_resolved'] += 1
+                    # 2. Total bugs resolved (ever)
+                    metrics[f'total_{priority_lower}_bugs_resolved'] += 1
                     
-                    # 3. Blocker bugs resolved in last month
+                    # 3. Bugs resolved in last month
                     if self.is_within_last_month(resolution_date):
-                        metrics['blocker_bugs_resolved_last_month'] += 1
-                        blocker_bugs_fixed.append({
+                        metrics[f'{priority_lower}_bugs_resolved_last_month'] += 1
+                        bugs_fixed.append({
                             'key': issue.get('key', 'N/A'),
                             'summary': issue.get('summary', 'N/A')[:100],
                             'resolution_date': resolution_date
                         })
         
-        return metrics, blocker_bugs_fixed
-    
-    def is_critical_priority(self, priority):
-        """Check if priority ID indicates a critical bug"""
-        if not priority:
-            return False
-        return str(priority).strip() in self.critical_priority_ids
-    
-    def is_bug_type(self, issue_type):
-        """Check if issue type ID is a bug"""
-        if not issue_type:
-            return False
-        return str(issue_type).strip() in self.bug_type_ids
-    
-    def is_resolved(self, resolution_date):
-        """Check if issue is resolved using resolution_date field"""
-        return resolution_date is not None and str(resolution_date).strip() != "" and str(resolution_date).strip().lower() != "null"
-    
-    def is_within_last_month(self, timestamp):
-        """Check if timestamp is within the last 30 days"""
-        if not timestamp:
-            return False
-        
-        try:
-            # Handle JIRA timestamp format: "1753460716.477000000 1440"
-            if isinstance(timestamp, str):
-                timestamp_parts = timestamp.strip().split()
-                if timestamp_parts:
-                    timestamp_str = timestamp_parts[0]
-                    if '.' in timestamp_str:
-                        timestamp_float = float(timestamp_str)
-                    else:
-                        timestamp_float = float(timestamp_str)
-                    dt = datetime.fromtimestamp(timestamp_float)
-                else:
-                    return False
-            elif isinstance(timestamp, (int, float)):
-                dt = datetime.fromtimestamp(timestamp)
-            else:
-                return False
-            
-            # Check if within last 30 days
-            cutoff_date = datetime.now() - timedelta(days=30)
-            return dt >= cutoff_date
-            
-        except Exception as e:
-            return False
+        return metrics, bugs_fixed
 
-    def extract_json_from_result(self, result_text):
-        """Extract JSON data from CrewAI result"""
-        if isinstance(result_text, dict):
-            return result_text
-        
-        if hasattr(result_text, 'raw'):
-            if isinstance(result_text.raw, dict):
-                return result_text.raw
-            elif isinstance(result_text.raw, str):
-                try:
-                    return json.loads(result_text.raw)
-                except:
-                    pass
-        
-        # Try parsing as string
-        result_str = str(result_text).strip()
-        try:
-            return json.loads(result_str)
-        except:
-            # Try extracting JSON with brace matching
-            if result_str.startswith('{'):
-                brace_count = 0
-                in_string = False
-                escape_next = False
-                end_idx = -1
-                
-                for i, char in enumerate(result_str):
-                    if escape_next:
-                        escape_next = False
-                        continue
-                    if char == '\\' and in_string:
-                        escape_next = True
-                        continue
-                    if char == '"' and not escape_next:
-                        in_string = not in_string
-                        continue
-                    if not in_string:
-                        if char == '{':
-                            brace_count += 1
-                        elif char == '}':
-                            brace_count -= 1
-                            if brace_count == 0:
-                                end_idx = i + 1
-                                break
-                
-                if end_idx != -1:
-                    json_str = result_str[:end_idx]
-                    try:
-                        return json.loads(json_str)
-                    except:
-                        pass
-        
-        return None
-
+    # Legacy method names for backward compatibility with existing code
     def calculate_critical_bug_metrics(self, issues):
-        """Calculate the 3 key critical bug metrics"""
-        metrics = {
-            'total_critical_bugs': 0,
-            'total_critical_bugs_resolved': 0,
-            'critical_bugs_resolved_last_month': 0
-        }
+        """Legacy method - use calculate_bug_metrics instead"""
+        return self.calculate_bug_metrics(issues)
         
-        critical_bugs_fixed = []
-        
-        for issue in issues:
-            issue_type = issue.get('issue_type', '')
-            priority = issue.get('priority', '')
-            resolution_date = issue.get('resolution_date', '')
-            
-            # Check if it's a critical bug
-            is_bug = self.is_bug_type(issue_type)
-            is_critical = self.is_critical_priority(priority) 
-            is_resolved = self.is_resolved(resolution_date)
-            
-            if is_bug and is_critical:
-                # 1. Total critical bugs
-                metrics['total_critical_bugs'] += 1
-                
-                if is_resolved:
-                    # 2. Total critical bugs resolved (ever)
-                    metrics['total_critical_bugs_resolved'] += 1
-                    
-                    # 3. Critical bugs resolved in last month
-                    if self.is_within_last_month(resolution_date):
-                        metrics['critical_bugs_resolved_last_month'] += 1
-                        critical_bugs_fixed.append({
-                            'key': issue.get('key', 'N/A'),
-                            'summary': issue.get('summary', 'N/A')[:100],
-                            'resolution_date': resolution_date
-                        })
-        
-        return metrics, critical_bugs_fixed
+    def calculate_blocker_bug_metrics(self, issues):
+        """Legacy method - use calculate_bug_metrics instead"""
+        return self.calculate_bug_metrics(issues)
 
 def extract_html_from_result(result_text):
     """Extract HTML content from CrewAI result"""
@@ -646,19 +518,22 @@ def main():
             except Exception as e:
                 print(f"⚠️  Error processing project summary data: {e}")
             
+            # Create calculators for different priority levels
+            critical_calculator = BugCalculator(priority_ids=["2"], priority_name="Critical")
+            blocker_calculator = BugCalculator(priority_ids=["1"], priority_name="Blocker")
+            
             # Process critical bug data if available
             try:
                 # Get the critical bug task result (second task in the crew)
                 if hasattr(result, 'tasks_output') and len(result.tasks_output) >= 2:
                     critical_bug_result = result.tasks_output[1]
-                    calculator = CriticalBugCalculator()
                     
                     # Extract critical bug data
-                    critical_bug_data = calculator.extract_json_from_result(critical_bug_result)
+                    critical_bug_data = critical_calculator.extract_json_from_result(critical_bug_result)
                     
                     if critical_bug_data and 'issues' in critical_bug_data:
                         issues = critical_bug_data['issues']
-                        metrics, critical_bugs_fixed = calculator.calculate_critical_bug_metrics(issues)
+                        metrics, critical_bugs_fixed = critical_calculator.calculate_bug_metrics(issues)
                         
                         print(f"🔥 Critical Bug Metrics:")
                         print(f"   Total Critical Bugs: {metrics['total_critical_bugs']}")
@@ -684,14 +559,13 @@ def main():
                 # Get the blocker bug task result (third task in the crew)
                 if hasattr(result, 'tasks_output') and len(result.tasks_output) >= 3:
                     blocker_bug_result = result.tasks_output[2]
-                    blocker_calculator = BlockerBugCalculator()
                     
                     # Extract blocker bug data
                     blocker_bug_data = blocker_calculator.extract_json_from_result(blocker_bug_result)
                     
                     if blocker_bug_data and 'issues' in blocker_bug_data:
                         issues = blocker_bug_data['issues']
-                        metrics, blocker_bugs_fixed = blocker_calculator.calculate_blocker_bug_metrics(issues)
+                        metrics, blocker_bugs_fixed = blocker_calculator.calculate_bug_metrics(issues)
                         
                         print(f"🚫 Blocker Bug Metrics:")
                         print(f"   Total Blocker Bugs: {metrics['total_blocker_bugs']}")
