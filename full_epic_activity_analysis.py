@@ -14,6 +14,7 @@ from crewai_tools import MCPServerAdapter
 
 # Configure Gemini LLM
 gemini_api_key = os.getenv("GEMINI_API_KEY")
+snowflake_token = os.getenv("SNOWFLAKE_TOKEN")
 
 llm = LLM(
     model="gemini/gemini-2.5-pro",
@@ -26,7 +27,7 @@ server_params = {
     "url": "https://jira-mcp-snowflake.mcp-playground-poc.devshift.net/sse",
     "transport": "sse",
     "headers": {
-        "X-Snowflake-Token": "token"
+        "X-Snowflake-Token": snowflake_token
     }
 }
 
