@@ -93,6 +93,28 @@ def create_bug_fetcher(mcp_tools):
         verbose=True
     )
 
+def create_blocker_bug_fetcher(mcp_tools):
+    """Create specialized agent for fetching BLOCKER bugs (priority=1)"""
+    return Agent(
+        role="JIRA Blocker Bug Fetcher",
+        goal="Fetch BLOCKER bugs (priority=1) from KONFLUX project",
+        backstory="You are specialized in retrieving BLOCKER priority bugs (priority=1) from JIRA. You ONLY fetch bugs with priority=1.",
+        tools=mcp_tools,
+        llm=llm,
+        verbose=True
+    )
+
+def create_critical_bug_fetcher(mcp_tools):
+    """Create specialized agent for fetching CRITICAL bugs (priority=2)"""
+    return Agent(
+        role="JIRA Critical Bug Fetcher", 
+        goal="Fetch CRITICAL bugs (priority=2) from KONFLUX project",
+        backstory="You are specialized in retrieving CRITICAL priority bugs (priority=2) from JIRA. You ONLY fetch bugs with priority=2.",
+        tools=mcp_tools,
+        llm=llm,
+        verbose=True
+    )
+
 def create_story_fetcher(mcp_tools):
     """Create agent for fetching story data"""
     return Agent(
@@ -139,35 +161,7 @@ def create_epic_progress_analyzer():
         verbose=True
     )
 
-def is_within_last_n_days(timestamp, days=14):
-    """Check if timestamp is within the last n days"""
-    if not timestamp:
-        return False
-    
-    try:
-        # Handle JIRA timestamp format: "1753460716.477000000 1440"
-        if isinstance(timestamp, str):
-            timestamp_parts = timestamp.strip().split()
-            if timestamp_parts:
-                timestamp_str = timestamp_parts[0]
-                if '.' in timestamp_str:
-                    timestamp_float = float(timestamp_str)
-                else:
-                    timestamp_float = float(timestamp_str)
-                dt = datetime.fromtimestamp(timestamp_float)
-            else:
-                return False
-        elif isinstance(timestamp, (int, float)):
-            dt = datetime.fromtimestamp(timestamp)
-        else:
-            return False
-        
-        # Check if within last n days
-        cutoff_date = datetime.now() - timedelta(days=days)
-        return dt >= cutoff_date
-        
-    except Exception as e:
-        return False
+
 
 def format_timestamp(timestamp):
     """Convert timestamp to readable format"""
@@ -207,27 +201,51 @@ def format_timestamp(timestamp):
         print(f"   ⚠️  Debug: Failed to format timestamp '{timestamp}' (type: {type(timestamp)}): {e}")
         return f"Invalid ({type(timestamp).__name__})"
 
+def is_timestamp_within_days(timestamp, days=14):
+    """Check if timestamp is within the last n days"""
+    if not timestamp:
+        return False
+    
+    try:
+        # Handle JIRA timestamp format: "1753460716.477000000 1440"
+        if isinstance(timestamp, str):
+            timestamp_parts = timestamp.strip().split()
+            if timestamp_parts:
+                timestamp_str = timestamp_parts[0]
+                if '.' in timestamp_str:
+                    timestamp_float = float(timestamp_str)
+                else:
+                    timestamp_float = float(timestamp_str)
+                dt = datetime.fromtimestamp(timestamp_float)
+            else:
+                return False
+        elif isinstance(timestamp, (int, float)):
+            dt = datetime.fromtimestamp(timestamp)
+        else:
+            return False
+        
+        # Check if within last n days
+        cutoff_date = datetime.now() - timedelta(days=days)
+        return dt >= cutoff_date
+        
+    except Exception as e:
+        return False
+
 def calculate_item_metrics(all_items, analysis_period_days=14, item_type="item"):
     """
-    Calculate comprehensive metrics for any type of JIRA items (bugs, stories, tasks)
+    Calculate metrics for items (bugs, stories, tasks).
     
     Args:
-        all_items: List of item dictionaries from JIRA
+        all_items: List of items from JIRA
         analysis_period_days: Number of days to look back for recent activity
         item_type: Type of items being analyzed ("bug", "story", "task", etc.)
-        
-    Returns:
-        Dictionary with metrics and categorized items
-    """
-    print(f"   📊 Calculating {item_type} metrics programmatically...")
     
+    Returns:
+        Dictionary with metrics and categorized item lists
+    """
     def is_resolved(resolution_date):
         """Check if item is resolved"""
         return resolution_date and resolution_date != 'Unknown' and resolution_date != 'Invalid'
-    
-    def is_within_period(timestamp, days):
-        """Check if timestamp is within specified period"""
-        return is_within_last_n_days(timestamp, days)
     
     # Initialize metrics based on item type
     if item_type.lower() == "bug":
@@ -258,7 +276,7 @@ def calculate_item_metrics(all_items, analysis_period_days=14, item_type="item")
     recently_resolved_items = []
     
     for item in all_items:
-        priority = item.get('priority', 'Unknown')
+        priority = item.get('priority', 'Unknown')  # Use raw priority value
         created = item.get('created', '')
         updated = item.get('updated', '') 
         resolution_date = item.get('resolution_date', '')
@@ -269,7 +287,6 @@ def calculate_item_metrics(all_items, analysis_period_days=14, item_type="item")
         if item_type.lower() == "bug":
             is_blocker = priority == '1'  # Priority 1 = Blocker
             is_critical = priority == '2'  # Priority 2 = Critical
-            severity_label = 'BLOCKER' if is_blocker else 'CRITICAL' if is_critical else 'OTHER'
             
             # Bug-specific metrics
             if is_blocker:
@@ -291,71 +308,64 @@ def calculate_item_metrics(all_items, analysis_period_days=14, item_type="item")
                 metrics['priority_breakdown'][priority] += 1
             else:
                 metrics['priority_breakdown'][priority] = 1
-            
-            severity_label = f'Priority {priority}' if priority != 'Unknown' else 'No Priority'
         
-        # Recent activity (updated, created, or resolved in period)
-        has_recent_activity = (
-            is_within_period(updated, analysis_period_days) or
-            is_within_period(created, analysis_period_days) or
-            is_within_period(resolution_date, analysis_period_days)
-        )
+        # All items have recent activity (due to timeframe=14 in database query)
+        recent_activity_items.append({
+            'key': item.get('key', 'Unknown'),
+            'summary': item.get('summary', 'No summary'),
+            'priority': priority,  # Use raw priority value
+            'status': item.get('status', 'Unknown'),
+            'updated': format_timestamp(updated),
+            'created': format_timestamp(created),
+            'resolution_date': format_timestamp(resolution_date)
+        })
         
-        if has_recent_activity:
-            if item_type.lower() == "bug":
-                if is_blocker:
-                    metrics['blocker_bugs_recent_activity'] += 1
-                elif is_critical:
-                    metrics['critical_bugs_recent_activity'] += 1
-            else:
-                metrics['items_recent_activity'] += 1
-                
-            recent_activity_items.append({
-                'key': item.get('key', 'Unknown'),
-                'summary': item.get('summary', 'No summary'),
-                'priority': priority,
-                'severity': severity_label,
-                'status': item.get('status', 'Unknown'),
-                'created': format_timestamp(created),
-                'updated': format_timestamp(updated),
-                'resolution_date': format_timestamp(resolution_date) if is_item_resolved else 'Not Resolved'
-            })
+        # Count items with recent activity for bug-specific metrics
+        if item_type.lower() == "bug":
+            is_blocker = priority == '1'
+            is_critical = priority == '2'
+            if is_blocker:
+                metrics['blocker_bugs_recent_activity'] += 1
+            elif is_critical:
+                metrics['critical_bugs_recent_activity'] += 1
+        else:
+            metrics['items_recent_activity'] += 1
         
-        # Recently created
-        if is_within_period(created, analysis_period_days):
-            if item_type.lower() == "bug":
-                if is_blocker:
-                    metrics['blocker_bugs_created_recently'] += 1
-                elif is_critical:
-                    metrics['critical_bugs_created_recently'] += 1
-            else:
-                metrics['items_created_recently'] += 1
-                
+        # Check if ACTUALLY created recently (not just has recent activity)
+        if is_timestamp_within_days(created, analysis_period_days):
             recently_created_items.append({
                 'key': item.get('key', 'Unknown'),
                 'summary': item.get('summary', 'No summary'),
                 'priority': priority,
-                'severity': severity_label,
                 'created': format_timestamp(created)
             })
-        
-        # Recently resolved
-        if is_within_period(resolution_date, analysis_period_days):
+            
+            # Count recently created for specific metrics
             if item_type.lower() == "bug":
-                if is_blocker:
-                    metrics['blocker_bugs_resolved_recently'] += 1
-                elif is_critical:
-                    metrics['critical_bugs_resolved_recently'] += 1
+                if priority == '1':
+                    metrics['blocker_bugs_created_recently'] += 1
+                elif priority == '2':
+                    metrics['critical_bugs_created_recently'] += 1
             else:
-                metrics['items_resolved_recently'] += 1
-                
+                metrics['items_created_recently'] += 1
+        
+        # Check if ACTUALLY resolved recently (not just has recent activity)
+        if is_item_resolved and is_timestamp_within_days(resolution_date, analysis_period_days):
             recently_resolved_items.append({
                 'key': item.get('key', 'Unknown'),
                 'summary': item.get('summary', 'No summary'),
                 'priority': priority,
-                'severity': severity_label,
                 'resolution_date': format_timestamp(resolution_date)
             })
+            
+            # Count recently resolved for specific metrics
+            if item_type.lower() == "bug":
+                if priority == '1':
+                    metrics['blocker_bugs_resolved_recently'] += 1
+                elif priority == '2':
+                    metrics['critical_bugs_resolved_recently'] += 1
+            else:
+                metrics['items_resolved_recently'] += 1
     
     return {
         'metrics': metrics,
@@ -365,7 +375,7 @@ def calculate_item_metrics(all_items, analysis_period_days=14, item_type="item")
     }
 
 def extract_json_from_result(result_text):
-    """Extract JSON data from CrewAI result, handling cases where agent adds extra text after JSON"""
+    """Extract JSON data from CrewAI result - using proven logic from crewai_konflux_dashboard.py"""
     if isinstance(result_text, dict):
         return result_text
     
@@ -378,47 +388,44 @@ def extract_json_from_result(result_text):
             except:
                 pass
     
+    # Try parsing as string
     result_str = str(result_text).strip()
-    
-    # First try to parse the full string as JSON
     try:
         return json.loads(result_str)
     except:
-        # If full string parsing fails, try to extract just the JSON part
+        # Try extracting JSON with proper brace matching (handles strings and escapes)
         if result_str.startswith('{'):
-            # Find the matching closing brace
             brace_count = 0
-            end_pos = 0
+            in_string = False
+            escape_next = False
+            end_idx = -1
+            
             for i, char in enumerate(result_str):
-                if char == '{':
-                    brace_count += 1
-                elif char == '}':
-                    brace_count -= 1
-                    if brace_count == 0:
-                        end_pos = i + 1
-                        break
-            if end_pos > 0:
-                json_part = result_str[:end_pos]
+                if escape_next:
+                    escape_next = False
+                    continue
+                if char == '\\' and in_string:
+                    escape_next = True
+                    continue
+                if char == '"' and not in_string:
+                    in_string = True
+                    continue
+                if char == '"' and in_string:
+                    in_string = False
+                    continue
+                if not in_string:
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            end_idx = i + 1
+                            break
+            
+            if end_idx != -1:
+                json_str = result_str[:end_idx]
                 try:
-                    return json.loads(json_part)
-                except:
-                    pass
-        elif result_str.startswith('['):
-            # Find the matching closing bracket
-            bracket_count = 0
-            end_pos = 0
-            for i, char in enumerate(result_str):
-                if char == '[':
-                    bracket_count += 1
-                elif char == ']':
-                    bracket_count -= 1
-                    if bracket_count == 0:
-                        end_pos = i + 1
-                        break
-            if end_pos > 0:
-                json_part = result_str[:end_pos]
-                try:
-                    return json.loads(json_part)
+                    return json.loads(json_str)
                 except:
                     pass
     
@@ -527,7 +534,9 @@ def main():
         with MCPServerAdapter(server_params) as mcp_tools:
             print(f"✅ Connected! Available tools: {[tool.name for tool in mcp_tools]}")
             
-            bug_fetcher = create_bug_fetcher(mcp_tools)
+            # Create specialized agents for different bug types
+            blocker_bug_fetcher = create_blocker_bug_fetcher(mcp_tools)
+            critical_bug_fetcher = create_critical_bug_fetcher(mcp_tools)
             bug_analyzer = create_bug_analyzer(mcp_tools)
             story_fetcher = create_story_fetcher(mcp_tools)
             task_fetcher = create_task_fetcher(mcp_tools)
@@ -536,62 +545,94 @@ def main():
             print("   🔍 Fetching blocker bugs (priority=1)...")
             blocker_task = Task(
                 description="""
-                Use list_jira_issues to get all BLOCKER bugs from KONFLUX project:
+                TASK: Use list_jira_issues to get all BLOCKER bugs from KONFLUX project with recent activity.
                 
-                Call list_jira_issues with:
+                EXACT PARAMETERS TO USE:
                 - project='KONFLUX'
-                - issue_type='1' (Bug)
-                - priority='1' (Blocker)
+                - issue_type='1'
+                - priority='1'
+                - timeframe=14
                 - limit=100
                 
-                CRITICAL: Return the complete list of bugs as VALID JSON.
-                Your response must be parseable JSON, not text description.
+                CRITICAL INSTRUCTIONS:
+                1. Call list_jira_issues with the exact parameters above
+                2. The timeframe=14 parameter gets bugs created/updated/resolved in last 14 days
+                3. Return ONLY the raw JSON output from the tool
+                4. DO NOT add any explanations, thoughts, or additional text
+                5. DO NOT add "Action:" or "Thought:" or any other text
+                6. The response must be ONLY the JSON data returned by the MCP tool
                 """,
-                agent=bug_fetcher,
-                expected_output="Valid JSON data containing KONFLUX blocker bugs"
+                agent=blocker_bug_fetcher,
+                expected_output="Raw JSON data from list_jira_issues tool with NO additional text - must be parseable as JSON",
+                output_file="blocker_bugs.json"
             )
             
             # Fetch critical bugs (priority 2 - Critical)
             print("   🔍 Fetching critical bugs (priority=2)...")
             critical_task = Task(
                 description="""
-                Use list_jira_issues to get all CRITICAL bugs from KONFLUX project:
+                TASK: Use list_jira_issues to get all CRITICAL bugs from KONFLUX project.
                 
-                Call list_jira_issues with:
+                EXACT PARAMETERS TO USE:
                 - project='KONFLUX'
-                - issue_type='1' (Bug) 
-                - priority='2' (Critical)
+                - issue_type='1'
+                - priority='2'
+                - timeframe=14
                 - limit=100
                 
-                CRITICAL: Return the complete list of bugs as VALID JSON.
-                Your response must be parseable JSON, not text description.
+                CRITICAL INSTRUCTIONS:
+                1. Call list_jira_issues with the exact parameters above
+                2. Return ONLY the raw JSON output from the tool
+                3. DO NOT add any explanations, thoughts, or additional text
+                4. DO NOT add "Action:" or "Thought:" or any other text
+                5. The response must be ONLY the JSON data returned by the MCP tool
                 """,
-                agent=bug_fetcher,
-                expected_output="Valid JSON data containing KONFLUX critical bugs"
+                agent=critical_bug_fetcher,
+                expected_output="Raw JSON data from list_jira_issues tool with NO additional text - must be parseable as JSON",
+                output_file="critical_bugs.json"
             )
             
             # Execute bug fetching
             bug_crew = Crew(
-                agents=[bug_fetcher],
+                agents=[blocker_bug_fetcher, critical_bug_fetcher],
                 tasks=[blocker_task, critical_task],
                 verbose=True
             )
             
             bug_result = bug_crew.kickoff()
             
-            # Process fetched bugs
+            # Process fetched bugs using task outputs (like full_epic_activity_analysis.py)
             all_bugs = []
             
-            if hasattr(bug_result, 'tasks_output') and len(bug_result.tasks_output) >= 2:
-                # Process blocker bugs
-                blocker_data = extract_json_from_result(bug_result.tasks_output[0])
-                if blocker_data and 'issues' in blocker_data:
-                    all_bugs.extend(blocker_data['issues'])
+            # Read bugs from the JSON files created by the agents and extract clean JSON
+            try:
+                # Process blocker bugs from JSON file
+                try:
+                    with open('blocker_bugs.json', 'r') as f:
+                        file_content = f.read()
+                    blocker_data = extract_json_from_result(file_content)
+                    if blocker_data and 'issues' in blocker_data:
+                        print(f"   📊 Found {len(blocker_data['issues'])} blocker bugs from query")
+                        all_bugs.extend(blocker_data['issues'])
+                    else:
+                        print(f"   ⚠️  No blocker bugs data or empty result")
+                except (FileNotFoundError, Exception) as e:
+                    print(f"   ⚠️  Could not read blocker_bugs.json: {e}")
                 
-                # Process critical bugs  
-                critical_data = extract_json_from_result(bug_result.tasks_output[1])
-                if critical_data and 'issues' in critical_data:
-                    all_bugs.extend(critical_data['issues'])
+                # Process critical bugs from JSON file
+                try:
+                    with open('critical_bugs.json', 'r') as f:
+                        file_content = f.read()
+                    critical_data = extract_json_from_result(file_content)
+                    if critical_data and 'issues' in critical_data:
+                        print(f"   📊 Found {len(critical_data['issues'])} critical bugs from query")
+                        all_bugs.extend(critical_data['issues'])
+                    else:
+                        print(f"   ⚠️  No critical bugs data or empty result")
+                except (FileNotFoundError, Exception) as e:
+                    print(f"   ⚠️  Could not read critical_bugs.json: {e}")
+            except Exception as e:
+                print(f"   ❌ Error reading bug JSON files: {e}")
             
             print(f"   📊 Found {len(all_bugs)} critical/blocker bugs total")
             
@@ -615,7 +656,16 @@ def main():
                 print(f"   📋 {i}/{len(recent_activity_bugs)} Analyzing {bug_key}...", end="")
                
                 try:
-                    # Get detailed bug information
+                    # Determine which fetcher to use based on bug priority
+                    bug_priority = bug.get('priority', '')
+                    if bug_priority == '1':  # Blocker bugs
+                        fetcher_agent = blocker_bug_fetcher
+                    elif bug_priority == '2':  # Critical bugs  
+                        fetcher_agent = critical_bug_fetcher
+                    else:
+                        # For other priorities, use blocker fetcher as fallback
+                        fetcher_agent = blocker_bug_fetcher
+                    
                     bug_details_task = Task(
                         description=f"""
                         Use get_jira_issue_details to get comprehensive information for bug {bug_key}.
@@ -626,12 +676,12 @@ def main():
                         CRITICAL: Return the complete issue details as VALID JSON.
                         Your response must be parseable JSON, not text description.
                         """,
-                        agent=bug_fetcher,
-                        expected_output=f"Valid JSON data containing full details for {bug_key}"
+                        agent=fetcher_agent,
+                        expected_output=f"Valid JSON data containing full details for {bug_key} - must be parseable as JSON"
                     )
                     
                     details_crew = Crew(
-                        agents=[bug_fetcher],
+                        agents=[fetcher_agent],
                         tasks=[bug_details_task],
                         verbose=True
                     )
@@ -671,10 +721,19 @@ def main():
                         analysis_result = analysis_crew.kickoff()
                         bug_summary = str(analysis_result.tasks_output[0]).strip()
                     
+                    # Determine severity label from priority  
+                    priority = bug.get('priority', 'Unknown')
+                    if priority == '1':
+                        severity_label = 'BLOCKER'
+                    elif priority == '2':
+                        severity_label = 'CRITICAL'
+                    else:
+                        severity_label = f'Priority {priority}'
+                    
                     bug_analyses.append({
                         'key': bug_key,
                         'summary': bug.get('summary', 'No summary'),
-                        'severity': bug.get('severity', 'Unknown'),
+                        'priority': severity_label,
                         'status': bug.get('status', 'Unknown'),
                         'created': format_timestamp(bug.get('created', '')),
                         'updated': format_timestamp(bug.get('updated', '')),
@@ -773,33 +832,39 @@ def main():
             # Step 4: Generate bugs analysis file
             print(f"\n🐛 Step 4: Generating bugs analysis file...")
             
-            bugs_filename = 'konflux_bugs_analysis.txt'
-            
-            with open(bugs_filename, 'w', encoding='utf-8') as f:
-                 f.write("KONFLUX CRITICAL/BLOCKER BUGS ANALYSIS\n")
-                 f.write("=" * 80 + "\n")
-                 f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                 f.write(f"Analysis Period: Last {ANALYSIS_PERIOD_DAYS} days\n")
-                 f.write("=" * 80 + "\n\n")
-                 
-                 # Write calculated metrics
-                 f.write("BUG METRICS SUMMARY:\n")
-                 f.write("-" * 20 + "\n")
-                 f.write(f"Total Blocker Bugs (Priority 1): {bug_metrics['total_blocker_bugs']}\n")
-                 f.write(f"Total Critical Bugs (Priority 2): {bug_metrics['total_critical_bugs']}\n")
-                 f.write(f"Blocker Bugs Resolved: {bug_metrics['total_blocker_bugs_resolved']}\n")
-                 f.write(f"Critical Bugs Resolved: {bug_metrics['total_critical_bugs_resolved']}\n")
-                 f.write(f"Blocker Bugs with Recent Activity: {bug_metrics['blocker_bugs_recent_activity']}\n")
-                 f.write(f"Critical Bugs with Recent Activity: {bug_metrics['critical_bugs_recent_activity']}\n")
-                 f.write(f"Recently Created Blocker Bugs: {bug_metrics['blocker_bugs_created_recently']}\n")
-                 f.write(f"Recently Created Critical Bugs: {bug_metrics['critical_bugs_created_recently']}\n")
-                 f.write(f"Recently Resolved Blocker Bugs: {bug_metrics['blocker_bugs_resolved_recently']}\n")
-                 f.write(f"Recently Resolved Critical Bugs: {bug_metrics['critical_bugs_resolved_recently']}\n\n")
-                 
-                 if recent_activity_bugs:
-                     # Group by severity for detailed analysis
-                     blockers = [b for b in recent_activity_bugs if b['severity'] == 'BLOCKER']
-                     criticals = [b for b in recent_activity_bugs if b['severity'] == 'CRITICAL']
+            try:
+                bugs_filename = 'konflux_bugs_analysis.txt'
+                
+                with open(bugs_filename, 'w', encoding='utf-8') as f:
+                     f.write("KONFLUX CRITICAL/BLOCKER BUGS ANALYSIS\n")
+                     f.write("=" * 80 + "\n")
+                     f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                     f.write(f"Analysis Period: Last {ANALYSIS_PERIOD_DAYS} days\n")
+                     f.write("=" * 80 + "\n\n")
+                     
+                     # Write calculated metrics
+                     f.write("BUG METRICS SUMMARY:\n")
+                     f.write("-" * 20 + "\n")
+                     f.write(f"Total Blocker Bugs (Priority 1): {bug_metrics['total_blocker_bugs']}\n")
+                     f.write(f"Total Critical Bugs (Priority 2): {bug_metrics['total_critical_bugs']}\n")
+                     f.write(f"Blocker Bugs Resolved: {bug_metrics['total_blocker_bugs_resolved']}\n")
+                     f.write(f"Critical Bugs Resolved: {bug_metrics['total_critical_bugs_resolved']}\n")
+                     f.write(f"Blocker Bugs with Recent Activity: {bug_metrics['blocker_bugs_recent_activity']}\n")
+                     f.write(f"Critical Bugs with Recent Activity: {bug_metrics['critical_bugs_recent_activity']}\n")
+                     f.write(f"Recently Created Blocker Bugs: {bug_metrics['blocker_bugs_created_recently']}\n")
+                     f.write(f"Recently Created Critical Bugs: {bug_metrics['critical_bugs_created_recently']}\n")
+                     f.write(f"Recently Resolved Blocker Bugs: {bug_metrics['blocker_bugs_resolved_recently']}\n")
+                     f.write(f"Recently Resolved Critical Bugs: {bug_metrics['critical_bugs_resolved_recently']}\n\n")
+                     
+                     if recent_activity_bugs:
+                         print(f"   🔍 Processing {len(recent_activity_bugs)} bugs with recent activity...")
+                         # Debug: Check structure of first bug
+                         if recent_activity_bugs:
+                             print(f"   🐛 First bug structure: {list(recent_activity_bugs[0].keys())}")
+                         
+                         # Group by priority for detailed analysis
+                         blockers = [b for b in recent_activity_bugs if b.get('priority') == 'BLOCKER']
+                         criticals = [b for b in recent_activity_bugs if b.get('priority') == 'CRITICAL']
                      
                      f.write(f"BUGS WITH RECENT ACTIVITY ({len(recent_activity_bugs)} total):\n")
                      f.write(f"- Blocker bugs: {len(blockers)}\n")
@@ -811,9 +876,9 @@ def main():
                          f.write("-" * 25 + "\n\n")
                          
                          for i, bug in enumerate(recently_created_bugs, 1):
-                             f.write(f"{i}. {bug['key']} - {bug['severity']}\n")
+                             f.write(f"{i}. {bug['key']} - {bug.get('priority', 'Unknown')}\n")
                              f.write(f"   Title: {bug['summary']}\n")
-                             f.write(f"   Priority: {bug['priority']}\n")
+                             f.write(f"   Priority: {bug.get('priority', 'Unknown')}\n")
                              f.write(f"   Created: {bug['created']}\n")
                              f.write("\n" + "-" * 30 + "\n\n")
                      
@@ -823,9 +888,9 @@ def main():
                          f.write("-" * 25 + "\n\n")
                          
                          for i, bug in enumerate(recently_resolved_bugs, 1):
-                             f.write(f"{i}. {bug['key']} - {bug['severity']}\n")
+                             f.write(f"{i}. {bug['key']} - {bug.get('priority', 'Unknown')}\n")
                              f.write(f"   Title: {bug['summary']}\n")
-                             f.write(f"   Priority: {bug['priority']}\n")
+                             f.write(f"   Priority: {bug.get('priority', 'Unknown')}\n")
                              f.write(f"   Resolved: {bug['resolution_date']}\n")
                              f.write("\n" + "-" * 30 + "\n\n")
                      
@@ -835,7 +900,7 @@ def main():
                          f.write("-" * 45 + "\n\n")
                          
                          for i, bug in enumerate(bug_analyses, 1):
-                             f.write(f"{i}. {bug['key']} - {bug['severity']}\n")
+                             f.write(f"{i}. {bug['key']} - {bug.get('priority', 'Unknown')}\n")
                              f.write(f"   Title: {bug['summary']}\n")
                              f.write(f"   Status: {bug['status']}\n")
                              f.write(f"   Created: {bug['created']}\n")
@@ -848,12 +913,18 @@ def main():
                                  if line.strip():
                                      f.write(f"   {line}\n")
                              f.write("\n" + "-" * 40 + "\n\n")
-                 else:
-                     f.write("No critical or blocker bugs found with recent activity.\n\n")
+                     else:
+                         f.write("No critical or blocker bugs found with recent activity.\n\n")
                  
-                 f.write("=" * 80 + "\n")
-                 f.write("END OF BUGS ANALYSIS\n")
+                     f.write("=" * 80 + "")
+                     f.write("END OF BUGS ANALYSIS")
              
+            except Exception as e:
+                print(f"❌ Error in Step 4: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                return
+            
             print(f"✅ Bugs analysis saved to: {bugs_filename}")
             
             # Step 5: Fetch and analyze stories and tasks
@@ -868,13 +939,16 @@ def main():
                 Call list_jira_issues with:
                 - project='KONFLUX'
                 - issue_type='17' (Story)
-                - limit=10
+                - timeframe=14
+                - limit=100
                 
                 CRITICAL: Return the complete list of stories as VALID JSON.
                 Your response must be parseable JSON, not text description.
+                Ensure the response contains the exact JSON structure returned by the MCP tool.
                 """,
                 agent=story_fetcher,
-                expected_output="Valid JSON data containing KONFLUX story issues"
+                expected_output="Valid JSON data containing KONFLUX story issues - must be parseable as JSON",
+                output_file="stories.json"
             )
             
             # Fetch tasks (issue_type=3)
@@ -886,13 +960,16 @@ def main():
                 Call list_jira_issues with:
                 - project='KONFLUX'
                 - issue_type='3' (Task)
-                - limit=10
+                - timeframe=14
+                - limit=100
                 
                 CRITICAL: Return the complete list of tasks as VALID JSON.
                 Your response must be parseable JSON, not text description.
+                Ensure the response contains the exact JSON structure returned by the MCP tool.
                 """,
                 agent=task_fetcher,
-                expected_output="Valid JSON data containing KONFLUX task issues"
+                expected_output="Valid JSON data containing KONFLUX task issues - must be parseable as JSON",
+                output_file="tasks.json"
             )
             
             # Execute stories and tasks fetching
@@ -904,52 +981,61 @@ def main():
             
             stories_tasks_result = stories_tasks_crew.kickoff()
             
-            # Process fetched stories and tasks
+            # Process fetched stories and tasks using task outputs (like full_epic_activity_analysis.py)
             all_stories_tasks = []
             
-            if hasattr(stories_tasks_result, 'tasks_output') and len(stories_tasks_result.tasks_output) >= 2:
-                # Process stories
-                stories_data = extract_json_from_result(stories_tasks_result.tasks_output[0])
-                if stories_data and 'issues' in stories_data:
-                    for story in stories_data['issues']:
-                        story['item_type'] = 'STORY'
-                        all_stories_tasks.append(story)
+            # Read stories and tasks from the JSON files created by the agents and extract clean JSON
+            try:
+                # Process stories from JSON file
+                try:
+                    with open('stories.json', 'r') as f:
+                        file_content = f.read()
+                    stories_data = extract_json_from_result(file_content)
+                    if stories_data and 'issues' in stories_data:
+                        print(f"   📊 Found {len(stories_data['issues'])} stories from query")
+                        for story in stories_data['issues']:
+                            story['item_type'] = 'STORY'
+                            all_stories_tasks.append(story)
+                    else:
+                        print(f"   ⚠️  No stories data or empty result")
+                except (FileNotFoundError, Exception) as e:
+                    print(f"   ⚠️  Could not read stories.json: {e}")
                 
-                # Process tasks  
-                tasks_data = extract_json_from_result(stories_tasks_result.tasks_output[1])
-                if tasks_data and 'issues' in tasks_data:
-                    for task in tasks_data['issues']:
-                        task['item_type'] = 'TASK'
-                        all_stories_tasks.append(task)
+                # Process tasks from JSON file
+                try:
+                    with open('tasks.json', 'r') as f:
+                        file_content = f.read()
+                    tasks_data = extract_json_from_result(file_content)
+                    if tasks_data and 'issues' in tasks_data:
+                        print(f"   📊 Found {len(tasks_data['issues'])} tasks from query")
+                        for task in tasks_data['issues']:
+                            task['item_type'] = 'TASK'
+                            all_stories_tasks.append(task)
+                    else:
+                        print(f"   ⚠️  No tasks data or empty result")
+                except (FileNotFoundError, Exception) as e:
+                    print(f"   ⚠️  Could not read tasks.json: {e}")
+            except Exception as e:
+                print(f"   ❌ Error reading stories/tasks JSON files: {e}")
             
             print(f"   📊 Found {len(all_stories_tasks)} stories/tasks total")
             
             # Filter for recent activity
             recent_stories_tasks = []
             
+            # Process stories and tasks - no need for manual date filtering 
+            # since database timeframe=14 already returned only items with recent activity
             for item in all_stories_tasks:
-                updated_timestamp = item.get('updated', '')
-                created_timestamp = item.get('created', '')
-                resolution_date = item.get('resolution_date', '')
-                
-                # Check if item was updated, created, or resolved in the last N days
-                has_recent_activity = (
-                    is_within_last_n_days(updated_timestamp, ANALYSIS_PERIOD_DAYS) or
-                    is_within_last_n_days(created_timestamp, ANALYSIS_PERIOD_DAYS) or
-                    is_within_last_n_days(resolution_date, ANALYSIS_PERIOD_DAYS)
-                )
-                
-                if has_recent_activity:
-                    recent_stories_tasks.append({
-                        'key': item.get('key', 'Unknown'),
-                        'summary': item.get('summary', 'No summary'),
-                        'item_type': item.get('item_type', 'Unknown'),
-                        'status': item.get('status', 'Unknown'),
-                        'priority': item.get('priority', 'Unknown'),
-                        'created': format_timestamp(item.get('created', '')),
-                        'updated': format_timestamp(item.get('updated', '')),
-                        'resolution_date': format_timestamp(item.get('resolution_date', '')) if item.get('resolution_date') else 'Not Resolved'
-                    })
+                recent_stories_tasks.append({
+                    'key': item.get('key', 'Unknown'),
+                    'summary': item.get('summary', 'No summary'),
+                    'item_type': item.get('item_type', 'Unknown'),
+                    'status': item.get('status', 'Unknown'),
+                    'priority': item.get('priority', 'Unknown'),
+                    'updated': format_timestamp(item.get('updated', '')),
+                    'created': format_timestamp(item.get('created', '')),
+                    'resolution_date': format_timestamp(item.get('resolution_date', ''))
+                })
             
             print(f"   🎯 Found {len(recent_stories_tasks)} stories/tasks with recent activity")
             
@@ -1052,7 +1138,8 @@ def main():
                         elif item_type == 'TASK':
                             fetcher_agent = task_fetcher
                         else:
-                            fetcher_agent = bug_fetcher  # Fallback for other types
+                            # Fallback for other types - use story fetcher as it's more general
+                            fetcher_agent = story_fetcher
                             
                         item_details_task = Task(
                             description=f"""
@@ -1065,7 +1152,7 @@ def main():
                             Your response must be parseable JSON, not text description.
                             """,
                             agent=fetcher_agent,
-                            expected_output=f"Valid JSON data containing full details for {item_key}"
+                            expected_output=f"Valid JSON data containing full details for {item_key} - must be parseable as JSON"
                         )
                         
                         details_crew = Crew(
