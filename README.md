@@ -24,6 +24,7 @@ Set the following environment variables:
 ```bash
 export GEMINI_API_KEY="your_gemini_api_key_here"
 export SNOWFLAKE_TOKEN="your_snowflake_token_here"
+export SNOWFLAKE_URL="jira_mcp_snowflake_url_here"
 ```
 
 ### 2. Install Dependencies
