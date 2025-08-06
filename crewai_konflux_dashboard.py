@@ -348,7 +348,7 @@ def create_fallback_dashboard():
         <h1>🔌 MCP Connection Error</h1>
         <p>Could not connect to JIRA Snowflake MCP server.</p>
         <p>Please check your network connection and server configuration.</p>
-        <p><strong>Server:</strong> https://jira-mcp-snowflake.mcp-playground-poc.devshift.net/sse</p>
+        <p><strong>Server:</strong> {url}</p>
         <p><strong>API Key:</strong> Please ensure GEMINI_API_KEY is set in your environment</p>
     </div>
 </body>
