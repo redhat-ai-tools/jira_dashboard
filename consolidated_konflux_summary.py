@@ -248,7 +248,9 @@ def main():
                     print(" ✅ Done")
                     
                 except Exception as e:
-                    print(f" ❌ Error: {str(e)[:30]}...")
+                    print(f" ❌ Error: {str(e)}")
+                    import traceback
+                    print(f"   🐛 Debug traceback: {traceback.format_exc()}")
             
             # Step 3: Analyze epic progress for significant changes
             print(f"\n🎯 Step 3: Analyzing epic progress for significant changes and achievements...")
@@ -543,7 +545,9 @@ def main():
                         print(" ✅ Done")
                         
                     except Exception as e:
-                        print(f" ❌ Error: {str(e)[:30]}...")
+                        print(f" ❌ Error: {str(e)}")
+                        import traceback
+                        print(f"   🐛 Debug traceback: {traceback.format_exc()}")
                         
                 print(f"   ✅ Generated {len(story_task_analyses)} LLM analyses for stories/tasks")
                 

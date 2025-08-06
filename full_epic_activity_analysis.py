@@ -23,6 +23,9 @@ from helper_func import (
     post_process_summary_timestamps
 )
 
+# Configuration
+ANALYSIS_PERIOD_DAYS = 14  # Period for epic connected issues analysis
+
 # Configure Gemini LLM
 gemini_api_key = os.getenv("GEMINI_API_KEY")
 snowflake_token = os.getenv("SNOWFLAKE_TOKEN")
@@ -96,10 +99,10 @@ def main():
                     print("="*80)
                     
                     active_epics = []
-                    cutoff_date = datetime.now() - timedelta(days=14)
+                    cutoff_date = datetime.now() - timedelta(days=ANALYSIS_PERIOD_DAYS)
                     cutoff_str = cutoff_date.strftime("%Y-%m-%d %H:%M:%S")
                     
-                    print(f"🕒 Cutoff date: {cutoff_str} (14 days ago)")
+                    print(f"🕒 Cutoff date: {cutoff_str} ({ANALYSIS_PERIOD_DAYS} days ago)")
                     print("="*80)
                     
                     for i, epic in enumerate(epics, 1):
@@ -182,7 +185,7 @@ def main():
                                                     if child_data:
                                                         child_updated = child_data.get('updated', '')
                                                         
-                                                        if is_timestamp_within_days(child_updated, 14):
+                                                        if is_timestamp_within_days(child_updated, ANALYSIS_PERIOD_DAYS):
                                                             recently_updated_children.append({
                                                                 'key': child_key,
                                                                 'summary': child['summary'],
@@ -354,7 +357,7 @@ def main():
                                 f.write("KONFLUX EPICS WITH RECENTLY UPDATED CONNECTED ISSUES\n")
                                 f.write("=" * 80 + "\n")
                                 f.write(f"Analysis Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                                f.write(f"Analysis Period: Last 14 days (since {cutoff_str})\n")
+                                f.write(f"Analysis Period: Last {ANALYSIS_PERIOD_DAYS} days (since {cutoff_str})\n")
                                 f.write(f"Total Active Epics Found: {len(epic_summaries)}\n")
                                 f.write("=" * 80 + "\n\n")
                                 
@@ -419,7 +422,7 @@ def main():
                         'epic_summaries_generated': len(epic_summaries) if 'epic_summaries' in locals() else 0,
                         'summary': {
                             'strategy': 'Full connected issue analysis with content summaries',
-                            'criteria': 'Epics where connected issues updated in last 14 days',
+                            'criteria': f'Epics where connected issues updated in last {ANALYSIS_PERIOD_DAYS} days',
                             'total_recent_children': sum(epic['recent_children_count'] for epic in active_epics)
                         }
                     }
@@ -436,7 +439,7 @@ def main():
                     print(f"   🎯 Epics with recent connected updates: {len(active_epics)}")
                     print(f"   ⚡ Total recently updated connected issues: {total_recent_children}")
                     print(f"   📝 Epic content summaries generated: {len(epic_summaries) if 'epic_summaries' in locals() else 0}")
-                    print(f"   📅 Analysis period: Last 14 days (since {cutoff_str})")
+                    print(f"   📅 Analysis period: Last {ANALYSIS_PERIOD_DAYS} days (since {cutoff_str})")
                     
                 else:
                     print("❌ Could not extract epics data")

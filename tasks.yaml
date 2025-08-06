@@ -121,6 +121,24 @@ tasks:
     agent: "epic_progress_analyzer"
     expected_output: "Analysis of epic progress highlighting significant changes, achievements, and next steps"
 
+  # Epic Analysis Tasks
+  get_epics_task:
+    description: |
+      Use list_jira_issues to get all KONFLUX epics:
+      
+      Call list_jira_issues with:
+      - project='KONFLUX'
+      - issue_type='16' (Epic)
+      - limit=50
+      - status='10018'
+      
+      CRITICAL: Return the complete list of epics with complete information as VALID JSON.
+      Your response must be parseable JSON, not text description.
+      Ensure the response contains the exact JSON structure returned by the MCP tool.
+    agent: "comprehensive_epic_analyst"
+    expected_output: "Valid JSON data containing KONFLUX epics - must be parseable as JSON"
+    output_file: "in_progress_epics.json"
+
   # Template tasks (for dynamic creation)
   templates:
     bug_details_task:
@@ -183,26 +201,7 @@ tasks:
       agent: "story_task_analyzer"
       expected_output: "Comprehensive analysis summary for {item_key}"
 
-  # Epic Analysis Tasks
-  get_epics_task:
-    description: |
-      Use list_jira_issues to get all KONFLUX epics:
-      
-      Call list_jira_issues with:
-      - project='KONFLUX'
-      - issue_type='16' (Epic)
-      - limit=50
-      - status='10018'
-      
-      CRITICAL: Return the complete list of epics with complete information as VALID JSON.
-      Your response must be parseable JSON, not text description.
-      Ensure the response contains the exact JSON structure returned by the MCP tool.
-    agent: "comprehensive_epic_analyst"
-    expected_output: "Valid JSON data containing KONFLUX epics - must be parseable as JSON"
-    output_file: "in_progress_epics.json"
-
-  # Template tasks for epic analysis
-  templates:
+    # Epic analysis templates
     epic_links_task:
       description: |
         Use get_jira_issue_links to get all connections for epic {epic_key}.
