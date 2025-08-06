@@ -8,10 +8,21 @@ Reads the recently_updated_epics_summary.txt file and creates a consolidated sum
 
 import os
 import json
-import re
 from datetime import datetime, timedelta
 from crewai import Agent, Task, Crew, LLM
 from crewai_tools import MCPServerAdapter
+from helper_func import (
+    load_agents_config, 
+    load_tasks_config, 
+    create_agent_from_config,
+    create_task_from_config,
+    create_agents,
+    format_timestamp,
+    is_timestamp_within_days,
+    calculate_item_metrics,
+    extract_json_from_result,
+    parse_epic_summaries
+)
 
 # Configuration
 ANALYSIS_PERIOD_DAYS = 14  # Period for bug analysis
@@ -34,451 +45,6 @@ server_params = {
         "X-Snowflake-Token": snowflake_token
     }
 }
-
-def create_bug_analyzer(mcp_tools):
-    """Create specialized agent for analyzing critical bugs and blockers"""
-    return Agent(
-        role="Critical Bug and Blocker Analyzer",
-        goal="Analyze critical bugs and blocker issues to extract key insights about problems, resolution efforts, and current status",
-        backstory="""You are an expert at analyzing JIRA bug reports and blocker issues.
-        You examine bug descriptions, comments, and activity to understand:
-        - What the problem/issue is and its impact
-        - What investigation and resolution efforts have been made
-        - Current status and any challenges in resolution
-        - Technical details and root causes when available
-        
-        You create concise but comprehensive summaries that help stakeholders understand
-        the bug's significance, progress toward resolution, and any blockers preventing fixes.
-
-        CRITICAL: You NEVER mention specific dates or timestamps in your summaries. All necessary
-        dates are pre-formatted in the data provided to you. Focus on technical content, problem
-        analysis, and resolution efforts, not date details.""",
-        tools=mcp_tools,
-        llm=llm,
-        verbose=True
-    )
-
-def create_story_task_analyzer(mcp_tools):
-    """Create specialized agent for analyzing stories and tasks"""
-    return Agent(
-        role="Story and Task Progress Analyzer",
-        goal="Analyze JIRA stories and tasks to extract key insights about progress, achievements, implementation details, and current status",
-        backstory="""You are an expert at analyzing JIRA stories and tasks to understand project progress and implementation details.
-        You examine story/task descriptions, comments, and activity to understand:
-        - What functionality or work was implemented or is being worked on
-        - What progress has been made and what challenges were encountered
-        - Technical implementation details and decisions made
-        - Current status and any blockers preventing completion
-        - Business value and impact of the work
-
-        You create concise but comprehensive summaries that help stakeholders understand
-        what work has been accomplished, what's in progress, and what challenges exist.
-
-        CRITICAL: You NEVER mention specific dates or timestamps in your summaries. All necessary
-        dates are pre-formatted in the data provided to you. Focus on technical content, business
-        value, implementation progress, and challenges, not date details.""",
-        tools=mcp_tools,
-        llm=llm,
-        verbose=True
-    )
-
-def create_bug_fetcher(mcp_tools):
-    """Create agent for fetching bug data"""
-    return Agent(
-        role="JIRA Bug Data Fetcher",
-        goal="Fetch critical and blocker bugs from KONFLUX project efficiently",
-        backstory="You systematically retrieve bug data from JIRA using the available tools.",
-        tools=mcp_tools,
-        llm=llm,
-        verbose=True
-    )
-
-def create_blocker_bug_fetcher(mcp_tools):
-    """Create specialized agent for fetching BLOCKER bugs (priority=1)"""
-    return Agent(
-        role="JIRA Blocker Bug Fetcher",
-        goal="Fetch BLOCKER bugs (priority=1) from KONFLUX project",
-        backstory="You are specialized in retrieving BLOCKER priority bugs (priority=1) from JIRA. You ONLY fetch bugs with priority=1.",
-        tools=mcp_tools,
-        llm=llm,
-        verbose=True
-    )
-
-def create_critical_bug_fetcher(mcp_tools):
-    """Create specialized agent for fetching CRITICAL bugs (priority=2)"""
-    return Agent(
-        role="JIRA Critical Bug Fetcher", 
-        goal="Fetch CRITICAL bugs (priority=2) from KONFLUX project",
-        backstory="You are specialized in retrieving CRITICAL priority bugs (priority=2) from JIRA. You ONLY fetch bugs with priority=2.",
-        tools=mcp_tools,
-        llm=llm,
-        verbose=True
-    )
-
-def create_story_fetcher(mcp_tools):
-    """Create agent for fetching story data"""
-    return Agent(
-        role="JIRA Story Data Fetcher",
-        goal="Fetch story issues from KONFLUX project efficiently",
-        backstory="You systematically retrieve story data from JIRA using the available tools.",
-        tools=mcp_tools,
-        llm=llm,
-        verbose=True
-    )
-
-def create_task_fetcher(mcp_tools):
-    """Create agent for fetching task data"""
-    return Agent(
-        role="JIRA Task Data Fetcher",
-        goal="Fetch task issues from KONFLUX project efficiently",
-        backstory="You systematically retrieve task data from JIRA using the available tools.",
-        tools=mcp_tools,
-        llm=llm,
-        verbose=True
-    )
-
-def create_epic_progress_analyzer():
-    """Create specialized agent for analyzing epic progress and identifying significant changes"""
-    return Agent(
-        role="Epic Progress and Achievement Analyzer",
-        goal="Analyze epic summaries to identify those with significant changes, extract key achievements, and determine next steps",
-        backstory="""You are an expert at analyzing project progress and identifying meaningful developments.
-        You examine epic summaries to understand:
-        - Which epics show significant progress or changes
-        - What major achievements have been accomplished
-        - What challenges and blockers are present
-        - What the next steps and priorities should be
-        
-        You focus on business impact, technical progress, and strategic direction.
-        You can distinguish between routine updates and truly significant developments
-        that would be important for stakeholders to know about.
-        
-        CRITICAL: You provide clear, actionable insights and avoid repeating 
-        information that doesn't add value. Focus on progress that moves the 
-        needle forward for the project.""",
-        tools=[],  # No tools needed - just text analysis
-        llm=llm,
-        verbose=True
-    )
-
-
-
-def format_timestamp(timestamp):
-    """Convert timestamp to readable format"""
-    if not timestamp or timestamp == 'None' or timestamp == '':
-        return "Not Set"
-    
-    try:
-        # First check if it's already a formatted string (like "2025-07-29 08:38:53")
-        if isinstance(timestamp, str):
-            # Check if it's already in readable format (contains hyphen for date)
-            if '-' in timestamp and len(timestamp) > 10:
-                return timestamp
-            
-            # Handle JIRA timestamp format: "1753460716.477000000 1440" or just "1753460716.477000000"
-            timestamp_parts = timestamp.strip().split()
-            if timestamp_parts:
-                timestamp_str = timestamp_parts[0]
-                # Try to convert to float - this should be a UNIX timestamp
-                try:
-                    if '.' in timestamp_str:
-                        timestamp_float = float(timestamp_str)
-                    else:
-                        timestamp_float = float(timestamp_str)
-                    dt = datetime.fromtimestamp(timestamp_float)
-                    return dt.strftime("%Y-%m-%d %H:%M:%S")
-                except ValueError:
-                    # If it can't be converted to float, it might be a different format
-                    return timestamp
-                    
-        elif isinstance(timestamp, (int, float)):
-            dt = datetime.fromtimestamp(timestamp)
-            return dt.strftime("%Y-%m-%d %H:%M:%S")
-            
-        return "Unknown Format"
-    except Exception as e:
-        # Debug: print the actual timestamp value that caused the error
-        print(f"   ⚠️  Debug: Failed to format timestamp '{timestamp}' (type: {type(timestamp)}): {e}")
-        return f"Invalid ({type(timestamp).__name__})"
-
-def is_timestamp_within_days(timestamp, days=14):
-    """Check if timestamp is within the last n days"""
-    if not timestamp:
-        return False
-    
-    try:
-        # Handle JIRA timestamp format: "1753460716.477000000 1440"
-        if isinstance(timestamp, str):
-            timestamp_parts = timestamp.strip().split()
-            if timestamp_parts:
-                timestamp_str = timestamp_parts[0]
-                if '.' in timestamp_str:
-                    timestamp_float = float(timestamp_str)
-                else:
-                    timestamp_float = float(timestamp_str)
-                dt = datetime.fromtimestamp(timestamp_float)
-            else:
-                return False
-        elif isinstance(timestamp, (int, float)):
-            dt = datetime.fromtimestamp(timestamp)
-        else:
-            return False
-        
-        # Check if within last n days
-        cutoff_date = datetime.now() - timedelta(days=days)
-        return dt >= cutoff_date
-        
-    except Exception as e:
-        return False
-
-def calculate_item_metrics(all_items, analysis_period_days=14, item_type="item"):
-    """
-    Calculate metrics for items (bugs, stories, tasks).
-    
-    Args:
-        all_items: List of items from JIRA
-        analysis_period_days: Number of days to look back for recent activity
-        item_type: Type of items being analyzed ("bug", "story", "task", etc.)
-    
-    Returns:
-        Dictionary with metrics and categorized item lists
-    """
-    def is_resolved(resolution_date):
-        """Check if item is resolved"""
-        return resolution_date and resolution_date != 'Unknown' and resolution_date != 'Invalid'
-    
-    # Initialize metrics based on item type
-    if item_type.lower() == "bug":
-        metrics = {
-            'total_blocker_bugs': 0,
-            'total_critical_bugs': 0,
-            'total_blocker_bugs_resolved': 0,
-            'total_critical_bugs_resolved': 0,
-            'blocker_bugs_recent_activity': 0,
-            'critical_bugs_recent_activity': 0,
-            'blocker_bugs_created_recently': 0,
-            'critical_bugs_created_recently': 0,
-            'blocker_bugs_resolved_recently': 0,
-            'critical_bugs_resolved_recently': 0
-        }
-    else:
-        metrics = {
-            'total_items': 0,
-            'total_resolved_items': 0,
-            'items_recent_activity': 0,
-            'items_created_recently': 0,
-            'items_resolved_recently': 0,
-            'priority_breakdown': {}
-        }
-    
-    recent_activity_items = []
-    recently_created_items = []
-    recently_resolved_items = []
-    
-    for item in all_items:
-        priority = item.get('priority', 'Unknown')  # Use raw priority value
-        created = item.get('created', '')
-        updated = item.get('updated', '') 
-        resolution_date = item.get('resolution_date', '')
-        
-        is_item_resolved = is_resolved(resolution_date)
-        
-        # Handle different item types
-        if item_type.lower() == "bug":
-            is_blocker = priority == '1'  # Priority 1 = Blocker
-            is_critical = priority == '2'  # Priority 2 = Critical
-            
-            # Bug-specific metrics
-            if is_blocker:
-                metrics['total_blocker_bugs'] += 1
-                if is_item_resolved:
-                    metrics['total_blocker_bugs_resolved'] += 1
-            elif is_critical:
-                metrics['total_critical_bugs'] += 1
-                if is_item_resolved:
-                    metrics['total_critical_bugs_resolved'] += 1
-        else:
-            # General item metrics
-            metrics['total_items'] += 1
-            if is_item_resolved:
-                metrics['total_resolved_items'] += 1
-            
-            # Track priority breakdown
-            if priority in metrics['priority_breakdown']:
-                metrics['priority_breakdown'][priority] += 1
-            else:
-                metrics['priority_breakdown'][priority] = 1
-        
-        # All items have recent activity (due to timeframe=14 in database query)
-        recent_activity_items.append({
-            'key': item.get('key', 'Unknown'),
-            'summary': item.get('summary', 'No summary'),
-            'priority': priority,  # Use raw priority value
-            'status': item.get('status', 'Unknown'),
-            'updated': format_timestamp(updated),
-            'created': format_timestamp(created),
-            'resolution_date': format_timestamp(resolution_date)
-        })
-        
-        # Count items with recent activity for bug-specific metrics
-        if item_type.lower() == "bug":
-            is_blocker = priority == '1'
-            is_critical = priority == '2'
-            if is_blocker:
-                metrics['blocker_bugs_recent_activity'] += 1
-            elif is_critical:
-                metrics['critical_bugs_recent_activity'] += 1
-        else:
-            metrics['items_recent_activity'] += 1
-        
-        # Check if ACTUALLY created recently (not just has recent activity)
-        if is_timestamp_within_days(created, analysis_period_days):
-            recently_created_items.append({
-                'key': item.get('key', 'Unknown'),
-                'summary': item.get('summary', 'No summary'),
-                'priority': priority,
-                'created': format_timestamp(created)
-            })
-            
-            # Count recently created for specific metrics
-            if item_type.lower() == "bug":
-                if priority == '1':
-                    metrics['blocker_bugs_created_recently'] += 1
-                elif priority == '2':
-                    metrics['critical_bugs_created_recently'] += 1
-            else:
-                metrics['items_created_recently'] += 1
-        
-        # Check if ACTUALLY resolved recently (not just has recent activity)
-        if is_item_resolved and is_timestamp_within_days(resolution_date, analysis_period_days):
-            recently_resolved_items.append({
-                'key': item.get('key', 'Unknown'),
-                'summary': item.get('summary', 'No summary'),
-                'priority': priority,
-                'resolution_date': format_timestamp(resolution_date)
-            })
-            
-            # Count recently resolved for specific metrics
-            if item_type.lower() == "bug":
-                if priority == '1':
-                    metrics['blocker_bugs_resolved_recently'] += 1
-                elif priority == '2':
-                    metrics['critical_bugs_resolved_recently'] += 1
-            else:
-                metrics['items_resolved_recently'] += 1
-    
-    return {
-        'metrics': metrics,
-        'recent_activity_items': recent_activity_items,
-        'recently_created_items': recently_created_items,
-        'recently_resolved_items': recently_resolved_items
-    }
-
-def extract_json_from_result(result_text):
-    """Extract JSON data from CrewAI result - using proven logic from crewai_konflux_dashboard.py"""
-    if isinstance(result_text, dict):
-        return result_text
-    
-    if hasattr(result_text, 'raw'):
-        if isinstance(result_text.raw, dict):
-            return result_text.raw
-        elif isinstance(result_text.raw, str):
-            try:
-                return json.loads(result_text.raw)
-            except:
-                pass
-    
-    # Try parsing as string
-    result_str = str(result_text).strip()
-    try:
-        return json.loads(result_str)
-    except:
-        # Try extracting JSON with proper brace matching (handles strings and escapes)
-        if result_str.startswith('{'):
-            brace_count = 0
-            in_string = False
-            escape_next = False
-            end_idx = -1
-            
-            for i, char in enumerate(result_str):
-                if escape_next:
-                    escape_next = False
-                    continue
-                if char == '\\' and in_string:
-                    escape_next = True
-                    continue
-                if char == '"' and not in_string:
-                    in_string = True
-                    continue
-                if char == '"' and in_string:
-                    in_string = False
-                    continue
-                if not in_string:
-                    if char == '{':
-                        brace_count += 1
-                    elif char == '}':
-                        brace_count -= 1
-                        if brace_count == 0:
-                            end_idx = i + 1
-                            break
-            
-            if end_idx != -1:
-                json_str = result_str[:end_idx]
-                try:
-                    return json.loads(json_str)
-                except:
-                    pass
-    
-    return None
-
-def parse_epic_summaries(filename):
-    """Parse the recently_updated_epics_summary.txt file and extract epic-level summaries"""
-    try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        epic_summaries = []
-        
-        # Split content by epic sections (look for "1. EPIC:", "2. EPIC:", etc.)
-        epic_sections = re.split(r'\n\d+\. EPIC: ', content)
-        
-        for i, section in enumerate(epic_sections[1:], 1):  # Skip first empty split
-            lines = section.split('\n')
-            if not lines:
-                continue
-                
-            # Extract epic key from first line
-            epic_key = lines[0].strip()
-            
-            # Find the EPIC-LEVEL SUMMARY section
-            epic_level_summary = ""
-            in_epic_summary = False
-            
-            for line in lines:
-                if "EPIC-LEVEL SUMMARY" in line:
-                    in_epic_summary = True
-                    continue
-                elif line.startswith("=" * 80) and in_epic_summary:
-                    break
-                elif in_epic_summary and line.strip():
-                    if not line.startswith("-" * 40):  # Skip separator lines
-                        epic_level_summary += line + "\n"
-            
-            if epic_level_summary.strip():
-                epic_summaries.append({
-                    'epic_key': epic_key,
-                    'summary': epic_level_summary.strip()
-                })
-        
-        print(f"✅ Parsed {len(epic_summaries)} epic summaries from {filename}")
-        return epic_summaries
-        
-    except FileNotFoundError:
-        print(f"❌ File {filename} not found. Please run full_epic_activity_analysis.py first.")
-        return []
-    except Exception as e:
-        print(f"❌ Error parsing {filename}: {str(e)}")
-        return []
 
 def main():
     """Main function to create consolidated summary"""
@@ -534,67 +100,23 @@ def main():
         with MCPServerAdapter(server_params) as mcp_tools:
             print(f"✅ Connected! Available tools: {[tool.name for tool in mcp_tools]}")
             
-            # Create specialized agents for different bug types
-            blocker_bug_fetcher = create_blocker_bug_fetcher(mcp_tools)
-            critical_bug_fetcher = create_critical_bug_fetcher(mcp_tools)
-            bug_analyzer = create_bug_analyzer(mcp_tools)
-            story_fetcher = create_story_fetcher(mcp_tools)
-            task_fetcher = create_task_fetcher(mcp_tools)
+            # Create all agents from YAML configuration
+            agents = create_agents(mcp_tools, llm)
+            
+            # Load tasks configuration
+            tasks_config = load_tasks_config()
             
             # Fetch critical bugs (priority 1 - Blocker)
             print("   🔍 Fetching blocker bugs (priority=1)...")
-            blocker_task = Task(
-                description="""
-                TASK: Use list_jira_issues to get all BLOCKER bugs from KONFLUX project with recent activity.
-                
-                EXACT PARAMETERS TO USE:
-                - project='KONFLUX'
-                - issue_type='1'
-                - priority='1'
-                - timeframe=14
-                - limit=100
-                
-                CRITICAL INSTRUCTIONS:
-                1. Call list_jira_issues with the exact parameters above
-                2. The timeframe=14 parameter gets bugs created/updated/resolved in last 14 days
-                3. Return ONLY the raw JSON output from the tool
-                4. DO NOT add any explanations, thoughts, or additional text
-                5. DO NOT add "Action:" or "Thought:" or any other text
-                6. The response must be ONLY the JSON data returned by the MCP tool
-                """,
-                agent=blocker_bug_fetcher,
-                expected_output="Raw JSON data from list_jira_issues tool with NO additional text - must be parseable as JSON",
-                output_file="blocker_bugs.json"
-            )
+            blocker_task = create_task_from_config("blocker_task", tasks_config['tasks']['blocker_task'], agents)
             
             # Fetch critical bugs (priority 2 - Critical)
             print("   🔍 Fetching critical bugs (priority=2)...")
-            critical_task = Task(
-                description="""
-                TASK: Use list_jira_issues to get all CRITICAL bugs from KONFLUX project.
-                
-                EXACT PARAMETERS TO USE:
-                - project='KONFLUX'
-                - issue_type='1'
-                - priority='2'
-                - timeframe=14
-                - limit=100
-                
-                CRITICAL INSTRUCTIONS:
-                1. Call list_jira_issues with the exact parameters above
-                2. Return ONLY the raw JSON output from the tool
-                3. DO NOT add any explanations, thoughts, or additional text
-                4. DO NOT add "Action:" or "Thought:" or any other text
-                5. The response must be ONLY the JSON data returned by the MCP tool
-                """,
-                agent=critical_bug_fetcher,
-                expected_output="Raw JSON data from list_jira_issues tool with NO additional text - must be parseable as JSON",
-                output_file="critical_bugs.json"
-            )
+            critical_task = create_task_from_config("critical_task", tasks_config['tasks']['critical_task'], agents)
             
             # Execute bug fetching
             bug_crew = Crew(
-                agents=[blocker_bug_fetcher, critical_bug_fetcher],
+                agents=[agents['blocker_bug_fetcher'], agents['critical_bug_fetcher']],
                 tasks=[blocker_task, critical_task],
                 verbose=True
             )
@@ -659,29 +181,23 @@ def main():
                     # Determine which fetcher to use based on bug priority
                     bug_priority = bug.get('priority', '')
                     if bug_priority == '1':  # Blocker bugs
-                        fetcher_agent = blocker_bug_fetcher
+                        fetcher_agent_name = 'blocker_bug_fetcher'
                     elif bug_priority == '2':  # Critical bugs  
-                        fetcher_agent = critical_bug_fetcher
+                        fetcher_agent_name = 'critical_bug_fetcher'
                     else:
                         # For other priorities, use blocker fetcher as fallback
-                        fetcher_agent = blocker_bug_fetcher
+                        fetcher_agent_name = 'blocker_bug_fetcher'
                     
-                    bug_details_task = Task(
-                        description=f"""
-                        Use get_jira_issue_details to get comprehensive information for bug {bug_key}.
-                        
-                        Call get_jira_issue_details with:
-                        - issue_key='{bug_key}'
-                        
-                        CRITICAL: Return the complete issue details as VALID JSON.
-                        Your response must be parseable JSON, not text description.
-                        """,
-                        agent=fetcher_agent,
-                        expected_output=f"Valid JSON data containing full details for {bug_key} - must be parseable as JSON"
+                    bug_details_task = create_task_from_config(
+                        "bug_details_task", 
+                        tasks_config['tasks']['templates']['bug_details_task'], 
+                        agents,
+                        bug_key=bug_key,
+                        fetcher_agent=fetcher_agent_name
                     )
                     
                     details_crew = Crew(
-                        agents=[fetcher_agent],
+                        agents=[agents[fetcher_agent_name]],
                         tasks=[bug_details_task],
                         verbose=True
                     )
@@ -692,28 +208,16 @@ def main():
                     # Generate analysis summary
                     bug_summary = "No summary available - failed to fetch details"
                     if bug_details and not bug_details.get('error'):
-                        analysis_task = Task(
-                            description=f"""
-                            Analyze this critical/blocker bug and create a comprehensive summary:
-                            
-                            Bug Details: {json.dumps(bug_details, indent=2)}
-                            
-                            Create a summary covering:
-                            - PROBLEM: What is the issue and its impact?
-                            - INVESTIGATION: What analysis/debugging has been done?
-                            - RESOLUTION EFFORTS: What attempts have been made to fix it?
-                            - CURRENT STATUS: Where does the resolution stand?
-                            - CHALLENGES: Any blockers or difficulties in resolution?
-                            
-                            Focus on technical details, progress, and actionable insights.
-                            Keep the summary concise but informative.
-                            """,
-                            agent=bug_analyzer,
-                            expected_output=f"Comprehensive analysis summary for {bug_key}"
+                        analysis_task = create_task_from_config(
+                            "bug_analysis_task",
+                            tasks_config['tasks']['templates']['bug_analysis_task'],
+                            agents,
+                            bug_details=json.dumps(bug_details, indent=2),
+                            bug_key=bug_key
                         )
                         
                         analysis_crew = Crew(
-                            agents=[bug_analyzer],
+                            agents=[agents['bug_analyzer']],
                             tasks=[analysis_task],
                             verbose=True
                         )
@@ -749,62 +253,21 @@ def main():
             # Step 3: Analyze epic progress for significant changes
             print(f"\n🎯 Step 3: Analyzing epic progress for significant changes and achievements...")
             
-            epic_progress_analyzer = create_epic_progress_analyzer()
-            
             # Read the epic summaries file content
             with open(epic_summaries_filename, 'r', encoding='utf-8') as f:
                 epic_content = f.read()
             
             # Create task to analyze epic progress
-            epic_analysis_task = Task(
-                description=f"""
-                Analyze the following epic summaries to identify which epics show significant changes, 
-                progress, or developments that would be important for stakeholders to know about.
-                
-                Epic Summaries Content:
-                {epic_content}
-                
-                Your analysis should:
-                
-                 1. FILTER: Identify which epics have significant progress, changes, or developments
-                    (not just routine updates). Look for:
-                    - Major features completed or significant milestones reached
-                    - Important technical breakthroughs or solutions implemented
-                    - Critical issues resolved or major blockers removed
-                    - New capabilities delivered or architectural improvements
-                    - Significant progress toward business objectives
-                    - **IMPORTANT: Always include epics that mention being resolved, completed, or finished - these are significant achievements**
-                
-                2. ACHIEVEMENTS: For the significant epics, summarize the key achievements:
-                    - What major work was completed?
-                    - What business value was delivered?
-                    - What technical capabilities were added?
-                    - What problems were solved?
-                
-                3. NEXT STEPS: Identify what needs to be done next:
-                    - What are the immediate priorities?
-                    - What blockers need to be addressed?
-                    - What dependencies need to be resolved?
-                    - What resources or decisions are needed?
-                
-                                 Structure your response clearly with sections for:
-                 - EPICS WITH SIGNIFICANT PROGRESS (list the epic keys and brief reason)
-                 - KEY ACHIEVEMENTS SUMMARY
-                 - PRIORITY NEXT STEPS
-                 
-                 CRITICAL: Do NOT filter out epics that mention being resolved, completed, or finished.
-                 These represent important achievements that leadership needs to see.
-                 
-                 Focus on insights that would help leadership understand progress and make decisions.
-                 Be concise but comprehensive.
-                """,
-                agent=epic_progress_analyzer,
-                expected_output="Analysis of epic progress highlighting significant changes, achievements, and next steps"
+            epic_analysis_task = create_task_from_config(
+                "epic_analysis_task",
+                tasks_config['tasks']['epic_analysis_task'],
+                agents,
+                epic_content=epic_content
             )
             
             # Execute epic analysis
             epic_analysis_crew = Crew(
-                agents=[epic_progress_analyzer],
+                agents=[agents['epic_progress_analyzer']],
                 tasks=[epic_analysis_task],
                 verbose=True
             )
@@ -856,44 +319,6 @@ def main():
                      f.write(f"Recently Resolved Blocker Bugs: {bug_metrics['blocker_bugs_resolved_recently']}\n")
                      f.write(f"Recently Resolved Critical Bugs: {bug_metrics['critical_bugs_resolved_recently']}\n\n")
                      
-                     if recent_activity_bugs:
-                         print(f"   🔍 Processing {len(recent_activity_bugs)} bugs with recent activity...")
-                         # Debug: Check structure of first bug
-                         if recent_activity_bugs:
-                             print(f"   🐛 First bug structure: {list(recent_activity_bugs[0].keys())}")
-                         
-                         # Group by priority for detailed analysis
-                         blockers = [b for b in recent_activity_bugs if b.get('priority') == 'BLOCKER']
-                         criticals = [b for b in recent_activity_bugs if b.get('priority') == 'CRITICAL']
-                     
-                     f.write(f"BUGS WITH RECENT ACTIVITY ({len(recent_activity_bugs)} total):\n")
-                     f.write(f"- Blocker bugs: {len(blockers)}\n")
-                     f.write(f"- Critical bugs: {len(criticals)}\n\n")
-                     
-                     # Write recently created bugs
-                     if recently_created_bugs:
-                         f.write("RECENTLY CREATED BUGS:\n")
-                         f.write("-" * 25 + "\n\n")
-                         
-                         for i, bug in enumerate(recently_created_bugs, 1):
-                             f.write(f"{i}. {bug['key']} - {bug.get('priority', 'Unknown')}\n")
-                             f.write(f"   Title: {bug['summary']}\n")
-                             f.write(f"   Priority: {bug.get('priority', 'Unknown')}\n")
-                             f.write(f"   Created: {bug['created']}\n")
-                             f.write("\n" + "-" * 30 + "\n\n")
-                     
-                     # Write recently resolved bugs
-                     if recently_resolved_bugs:
-                         f.write("RECENTLY RESOLVED BUGS:\n")
-                         f.write("-" * 25 + "\n\n")
-                         
-                         for i, bug in enumerate(recently_resolved_bugs, 1):
-                             f.write(f"{i}. {bug['key']} - {bug.get('priority', 'Unknown')}\n")
-                             f.write(f"   Title: {bug['summary']}\n")
-                             f.write(f"   Priority: {bug.get('priority', 'Unknown')}\n")
-                             f.write(f"   Resolved: {bug['resolution_date']}\n")
-                             f.write("\n" + "-" * 30 + "\n\n")
-                     
                      # Write detailed analysis for bugs with LLM summaries (if any)
                      if bug_analyses:
                          f.write("DETAILED BUG ANALYSIS (With LLM Summaries):\n")
@@ -932,49 +357,15 @@ def main():
             
             # Fetch stories (issue_type=17)
             print("   📖 Fetching stories (issue_type=17)...")
-            stories_task = Task(
-                description="""
-                Use list_jira_issues to get all STORY issues from KONFLUX project:
-                
-                Call list_jira_issues with:
-                - project='KONFLUX'
-                - issue_type='17' (Story)
-                - timeframe=14
-                - limit=100
-                
-                CRITICAL: Return the complete list of stories as VALID JSON.
-                Your response must be parseable JSON, not text description.
-                Ensure the response contains the exact JSON structure returned by the MCP tool.
-                """,
-                agent=story_fetcher,
-                expected_output="Valid JSON data containing KONFLUX story issues - must be parseable as JSON",
-                output_file="stories.json"
-            )
+            stories_task = create_task_from_config("stories_task", tasks_config['tasks']['stories_task'], agents)
             
             # Fetch tasks (issue_type=3)
             print("   📝 Fetching tasks (issue_type=3)...")
-            tasks_task = Task(
-                description="""
-                Use list_jira_issues to get all TASK issues from KONFLUX project:
-                
-                Call list_jira_issues with:
-                - project='KONFLUX'
-                - issue_type='3' (Task)
-                - timeframe=14
-                - limit=100
-                
-                CRITICAL: Return the complete list of tasks as VALID JSON.
-                Your response must be parseable JSON, not text description.
-                Ensure the response contains the exact JSON structure returned by the MCP tool.
-                """,
-                agent=task_fetcher,
-                expected_output="Valid JSON data containing KONFLUX task issues - must be parseable as JSON",
-                output_file="tasks.json"
-            )
+            tasks_task = create_task_from_config("tasks_task", tasks_config['tasks']['tasks_task'], agents)
             
             # Execute stories and tasks fetching
             stories_tasks_crew = Crew(
-                agents=[story_fetcher, task_fetcher],
+                agents=[agents['story_fetcher'], agents['task_fetcher']],
                 tasks=[stories_task, tasks_task],
                 verbose=True
             )
@@ -1065,61 +456,18 @@ def main():
                 f.write(f"Items with Recent Activity: {stories_tasks_metrics['items_recent_activity']}\n")
                 f.write(f"Recently Created Items: {stories_tasks_metrics['items_created_recently']}\n")
                 f.write(f"Recently Resolved Items: {stories_tasks_metrics['items_resolved_recently']}\n\n")
-                
-                f.write("PRIORITY BREAKDOWN:\n")
-                f.write("-" * 20 + "\n")
-                for priority, count in stories_tasks_metrics['priority_breakdown'].items():
-                    f.write(f"Priority {priority}: {count} items\n")
-                f.write("\n")
-                
                 f.write("BREAKDOWN BY TYPE:\n")
                 f.write("-" * 20 + "\n")
                 f.write(f"Stories with Recent Activity: {len(stories)}\n")
                 f.write(f"Tasks with Recent Activity: {len(tasks)}\n")
                 f.write(f"Total Recent Activity Items: {len(recent_stories_tasks)}\n\n")
                 
-                if recent_stories_tasks:
-                    # Write stories section
-                    if stories:
-                        f.write("STORIES WITH RECENT ACTIVITY:\n")
-                        f.write("-" * 35 + "\n\n")
-                        
-                        for i, story in enumerate(stories, 1):
-                            f.write(f"{i}. {story['key']} - STORY\n")
-                            f.write(f"   Title: {story['summary']}\n")
-                            f.write(f"   Status: {story['status']}\n")
-                            f.write(f"   Priority: {story['priority']}\n")
-                            f.write(f"   Created: {story['created']}\n")
-                            f.write(f"   Updated: {story['updated']}\n")
-                            f.write(f"   Resolution: {story['resolution_date']}\n")
-                            f.write("\n" + "-" * 40 + "\n\n")
-                    
-                    # Write tasks section
-                    if tasks:
-                        f.write("TASKS WITH RECENT ACTIVITY:\n")
-                        f.write("-" * 30 + "\n\n")
-                        
-                        for i, task in enumerate(tasks, 1):
-                            f.write(f"{i}. {task['key']} - TASK\n")
-                            f.write(f"   Title: {task['summary']}\n")
-                            f.write(f"   Status: {task['status']}\n")
-                            f.write(f"   Priority: {task['priority']}\n")
-                            f.write(f"   Created: {task['created']}\n")
-                            f.write(f"   Updated: {task['updated']}\n")
-                            f.write(f"   Resolution: {task['resolution_date']}\n")
-                            f.write("\n" + "-" * 40 + "\n\n")
-                else:
-                    f.write("No stories or tasks found with recent activity.\n\n")
-                
-                f.write("=" * 80 + "\n")
-                f.write("END OF STORIES AND TASKS ANALYSIS\n")
-            
+
             print(f"✅ Stories and tasks analysis saved to: {stories_tasks_filename}")
             
             # Step 5a: Generate LLM analysis for stories and tasks with recent activity
             print(f"\n🤖 Step 5a: Generating LLM analysis for stories/tasks with recent activity...")
             
-            story_task_analyzer = create_story_task_analyzer(mcp_tools)
             story_task_analyses = []
             
             if len(recent_stories_tasks) > 0:
@@ -1134,29 +482,24 @@ def main():
                         # Get detailed item information
                         # Use appropriate fetcher based on item type
                         if item_type == 'STORY':
-                            fetcher_agent = story_fetcher
+                            fetcher_agent_name = 'story_fetcher'
                         elif item_type == 'TASK':
-                            fetcher_agent = task_fetcher
+                            fetcher_agent_name = 'task_fetcher'
                         else:
                             # Fallback for other types - use story fetcher as it's more general
-                            fetcher_agent = story_fetcher
+                            fetcher_agent_name = 'story_fetcher'
                             
-                        item_details_task = Task(
-                            description=f"""
-                            Use get_jira_issue_details to get comprehensive information for {item_type.lower()} {item_key}.
-                            
-                            Call get_jira_issue_details with:
-                            - issue_key='{item_key}'
-                            
-                            CRITICAL: Return the complete issue details as VALID JSON.
-                            Your response must be parseable JSON, not text description.
-                            """,
-                            agent=fetcher_agent,
-                            expected_output=f"Valid JSON data containing full details for {item_key} - must be parseable as JSON"
+                        item_details_task = create_task_from_config(
+                            "item_details_task",
+                            tasks_config['tasks']['templates']['item_details_task'],
+                            agents,
+                            item_type=item_type.lower(),
+                            item_key=item_key,
+                            fetcher_agent=fetcher_agent_name
                         )
                         
                         details_crew = Crew(
-                            agents=[fetcher_agent],
+                            agents=[agents[fetcher_agent_name]],
                             tasks=[item_details_task],
                             verbose=True
                         )
@@ -1167,28 +510,17 @@ def main():
                         # Generate analysis summary
                         item_summary = "No summary available - failed to fetch details"
                         if item_details and not item_details.get('error'):
-                            analysis_task = Task(
-                                description=f"""
-                                Analyze this {item_type.lower()} and create a comprehensive summary:
-                                
-                                {item_type} Details: {json.dumps(item_details, indent=2)}
-                                
-                                Create a summary covering:
-                                - PURPOSE: What functionality or work does this represent?
-                                - PROGRESS: What has been accomplished and what's the current status?
-                                - IMPLEMENTATION: What technical work has been done?
-                                - CHALLENGES: Any blockers or difficulties encountered?
-                                - NEXT STEPS: What remains to be done?
-                                
-                                Focus on technical details, business value, and actionable insights.
-                                Keep the summary concise but informative.
-                                """,
-                                agent=story_task_analyzer,
-                                expected_output=f"Comprehensive analysis summary for {item_key}"
+                            analysis_task = create_task_from_config(
+                                "item_analysis_task",
+                                tasks_config['tasks']['templates']['item_analysis_task'],
+                                agents,
+                                item_type=item_type,
+                                item_details=json.dumps(item_details, indent=2),
+                                item_key=item_key
                             )
                             
                             analysis_crew = Crew(
-                                agents=[story_task_analyzer],
+                                agents=[agents['story_task_analyzer']],
                                 tasks=[analysis_task],
                                 verbose=True
                             )

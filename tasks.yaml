@@ -1,0 +1,285 @@
+tasks:
+  # Static tasks
+  blocker_task:
+    description: |
+      TASK: Use list_jira_issues to get all BLOCKER bugs from KONFLUX project with recent activity.
+      
+      EXACT PARAMETERS TO USE:
+      - project='KONFLUX'
+      - issue_type='1'
+      - priority='1'
+      - timeframe=14
+      - limit=100
+      
+      CRITICAL INSTRUCTIONS:
+      1. Call list_jira_issues with the exact parameters above
+      2. The timeframe=14 parameter gets bugs created/updated/resolved in last 14 days
+      3. Return ONLY the raw JSON output from the tool
+      4. DO NOT add any explanations, thoughts, or additional text
+      5. DO NOT add "Action:" or "Thought:" or any other text
+      6. The response must be ONLY the JSON data returned by the MCP tool
+    agent: "blocker_bug_fetcher"
+    expected_output: "Raw JSON data from list_jira_issues tool with NO additional text - must be parseable as JSON"
+    output_file: "blocker_bugs.json"
+
+  critical_task:
+    description: |
+      TASK: Use list_jira_issues to get all CRITICAL bugs from KONFLUX project.
+      
+      EXACT PARAMETERS TO USE:
+      - project='KONFLUX'
+      - issue_type='1'
+      - priority='2'
+      - timeframe=14
+      - limit=100
+      
+      CRITICAL INSTRUCTIONS:
+      1. Call list_jira_issues with the exact parameters above
+      2. Return ONLY the raw JSON output from the tool
+      3. DO NOT add any explanations, thoughts, or additional text
+      4. DO NOT add "Action:" or "Thought:" or any other text
+      5. The response must be ONLY the JSON data returned by the MCP tool
+    agent: "critical_bug_fetcher"
+    expected_output: "Raw JSON data from list_jira_issues tool with NO additional text - must be parseable as JSON"
+    output_file: "critical_bugs.json"
+
+  stories_task:
+    description: |
+      Use list_jira_issues to get all STORY issues from KONFLUX project:
+      
+      Call list_jira_issues with:
+      - project='KONFLUX'
+      - issue_type='17' (Story)
+      - timeframe=14
+      - limit=100
+      
+      CRITICAL: Return the complete list of stories as VALID JSON.
+      Your response must be parseable JSON, not text description.
+      Ensure the response contains the exact JSON structure returned by the MCP tool.
+    agent: "story_fetcher"
+    expected_output: "Valid JSON data containing KONFLUX story issues - must be parseable as JSON"
+    output_file: "stories.json"
+
+  tasks_task:
+    description: |
+      Use list_jira_issues to get all TASK issues from KONFLUX project:
+      
+      Call list_jira_issues with:
+      - project='KONFLUX'
+      - issue_type='3' (Task)
+      - timeframe=14
+      - limit=100
+      
+      CRITICAL: Return the complete list of tasks as VALID JSON.
+      Your response must be parseable JSON, not text description.
+      Ensure the response contains the exact JSON structure returned by the MCP tool.
+    agent: "task_fetcher"
+    expected_output: "Valid JSON data containing KONFLUX task issues - must be parseable as JSON"
+    output_file: "tasks.json"
+
+  epic_analysis_task:
+    description: |
+      Analyze the following epic summaries to identify which epics show significant changes, 
+      progress, or developments that would be important for stakeholders to know about.
+      
+      Epic Summaries Content:
+      {epic_content}
+      
+      Your analysis should:
+      
+       1. FILTER: Identify which epics have significant progress, changes, or developments
+          (not just routine updates). Look for:
+          - Major features completed or significant milestones reached
+          - Important technical breakthroughs or solutions implemented
+          - Critical issues resolved or major blockers removed
+          - New capabilities delivered or architectural improvements
+          - Significant progress toward business objectives
+          - **IMPORTANT: Always include epics that mention being resolved, completed, or finished - these are significant achievements**
+      
+      2. ACHIEVEMENTS: For the significant epics, summarize the key achievements:
+          - What major work was completed?
+          - What business value was delivered?
+          - What technical capabilities were added?
+          - What problems were solved?
+      
+      3. NEXT STEPS: Identify what needs to be done next:
+          - What are the immediate priorities?
+          - What blockers need to be addressed?
+          - What dependencies need to be resolved?
+          - What resources or decisions are needed?
+      
+                       Structure your response clearly with sections for:
+       - EPICS WITH SIGNIFICANT PROGRESS (list the epic keys and brief reason)
+       - KEY ACHIEVEMENTS SUMMARY
+       - PRIORITY NEXT STEPS
+       
+       CRITICAL: Do NOT filter out epics that mention being resolved, completed, or finished.
+       These represent important achievements that leadership needs to see.
+       
+       Focus on insights that would help leadership understand progress and make decisions.
+       Be concise but comprehensive.
+    agent: "epic_progress_analyzer"
+    expected_output: "Analysis of epic progress highlighting significant changes, achievements, and next steps"
+
+  # Template tasks (for dynamic creation)
+  templates:
+    bug_details_task:
+      description: |
+        Use get_jira_issue_details to get comprehensive information for bug {bug_key}.
+        
+        Call get_jira_issue_details with:
+        - issue_key='{bug_key}'
+        
+        CRITICAL: Return the complete issue details as VALID JSON.
+        Your response must be parseable JSON, not text description.
+      agent: "{fetcher_agent}"
+      expected_output: "Valid JSON data containing full details for {bug_key} - must be parseable as JSON"
+
+    bug_analysis_task:
+      description: |
+        Analyze this critical/blocker bug and create a comprehensive summary:
+        
+        Bug Details: {bug_details}
+        
+        Create a summary covering:
+        - PROBLEM: What is the issue and its impact?
+        - INVESTIGATION: What analysis/debugging has been done?
+        - RESOLUTION EFFORTS: What attempts have been made to fix it?
+        - CURRENT STATUS: Where does the resolution stand?
+        - CHALLENGES: Any blockers or difficulties in resolution?
+        
+        Focus on technical details, progress, and actionable insights.
+        Keep the summary concise but informative.
+      agent: "bug_analyzer"
+      expected_output: "Comprehensive analysis summary for {bug_key}"
+
+    item_details_task:
+      description: |
+        Use get_jira_issue_details to get comprehensive information for {item_type} {item_key}.
+        
+        Call get_jira_issue_details with:
+        - issue_key='{item_key}'
+        
+        CRITICAL: Return the complete issue details as VALID JSON.
+        Your response must be parseable JSON, not text description.
+      agent: "{fetcher_agent}"
+      expected_output: "Valid JSON data containing full details for {item_key} - must be parseable as JSON"
+
+    item_analysis_task:
+      description: |
+        Analyze this {item_type} and create a comprehensive summary:
+        
+        {item_type} Details: {item_details}
+        
+        Create a summary covering:
+        - PURPOSE: What functionality or work does this represent?
+        - PROGRESS: What has been accomplished and what's the current status?
+        - IMPLEMENTATION: What technical work has been done?
+        - CHALLENGES: Any blockers or difficulties encountered?
+        - NEXT STEPS: What remains to be done?
+        
+        Focus on technical details, business value, and actionable insights.
+        Keep the summary concise but informative.
+      agent: "story_task_analyzer"
+      expected_output: "Comprehensive analysis summary for {item_key}"
+
+  # Epic Analysis Tasks
+  get_epics_task:
+    description: |
+      Use list_jira_issues to get all KONFLUX epics:
+      
+      Call list_jira_issues with:
+      - project='KONFLUX'
+      - issue_type='16' (Epic)
+      - limit=50
+      - status='10018'
+      
+      CRITICAL: Return the complete list of epics with complete information as VALID JSON.
+      Your response must be parseable JSON, not text description.
+      Ensure the response contains the exact JSON structure returned by the MCP tool.
+    agent: "comprehensive_epic_analyst"
+    expected_output: "Valid JSON data containing KONFLUX epics - must be parseable as JSON"
+    output_file: "in_progress_epics.json"
+
+  # Template tasks for epic analysis
+  templates:
+    epic_links_task:
+      description: |
+        Use get_jira_issue_links to get all connections for epic {epic_key}.
+        
+        Call get_jira_issue_links with:
+        - issue_key='{epic_key}'
+        
+        CRITICAL: Return all connected issues and their relationship information as VALID JSON.
+        Your response must be the exact JSON structure returned by the MCP tool.
+        Do not add any text description or explanation - only return parseable JSON.
+        The JSON should contain 'links' array and other fields from the MCP response.
+      agent: "comprehensive_epic_analyst"
+      expected_output: "Valid parseable JSON data with all linked issues for epic {epic_key}"
+
+    child_issue_details_task:
+      description: |
+        Use get_jira_issue_details to get update information for {child_key}.
+        
+        Call get_jira_issue_details with:
+        - issue_key='{child_key}'
+        
+        CRITICAL: Return the issue details including the 'updated' timestamp as VALID JSON.
+        Your response must be the exact JSON structure returned by the MCP tool.
+        Do not add any text description - only return parseable JSON.
+      agent: "comprehensive_epic_analyst"
+      expected_output: "Valid parseable JSON data containing issue details for {child_key} including update timestamp"
+
+    issue_content_analysis_task:
+      description: |
+        Use get_jira_issue_details to get comprehensive information for issue {child_key}.
+        
+        Call get_jira_issue_details with:
+        - issue_key='{child_key}'
+        
+        Then analyze the issue's description and comments to create a summary that includes:
+        
+        1. WORK DONE: What specific work was completed in this issue?
+        2. PURPOSE: What was this issue trying to achieve?
+        3. RECENT ACTIVITY: What was done in the recent updates (based on comments and activity)?
+        4. CURRENT STATUS: What is the current state of this issue?
+        5. CHALLENGES: Any obstacles or problems encountered?
+        
+        CRITICAL INSTRUCTIONS FOR DATES:
+        - NEVER mention any specific dates or timestamps in your summary
+        - Only use the pre-formatted date "{updated_formatted}" if you need to reference when this issue was last updated
+        - DO NOT make up, infer, calculate, or guess any creation dates, resolution dates, or other dates
+        - If you need to reference timing, use relative terms like "recently updated" instead of specific dates
+        - Focus on the work content, not date details
+        
+        Focus on recent activity and what this issue contributes to the overall epic.
+        Keep the summary concise but informative.
+      agent: "connected_issues_analyzer"
+      expected_output: "Summary of recent activity and purpose for issue {child_key}"
+
+    epic_synthesis_task:
+      description: |
+        Based on the following summaries of recently updated issues connected to epic {epic_key} ("{epic_summary}"), 
+        create a comprehensive epic-level summary:
+
+        {issues_text}
+
+        Create an epic summary that includes:
+        
+        1. EPIC OVERVIEW: What this epic is achieving based on connected issues
+        2. RECENT PROGRESS: What work has been completed recently across connected issues  
+        3. KEY ACCOMPLISHMENTS: Major achievements from the recently updated issues
+        4. CURRENT FOCUS: What the team is currently working on
+        5. CHALLENGES & BLOCKERS: Any issues or obstacles identified
+        6. NEXT STEPS: What appears to be the planned next actions
+        
+        CRITICAL INSTRUCTIONS FOR DATES:
+        - NEVER mention specific dates or timestamps in your epic summary
+        - DO NOT make up, infer, calculate, or fabricate any creation dates, resolution dates, or other dates
+        - Use only relative timing terms like "recently updated" or "recently completed"
+        - The individual issue summaries above already contain properly formatted dates where needed
+        - Focus on synthesizing the work content and progress, not date details
+        
+        Synthesize insights from all the connected issues to provide a holistic view of this epic's recent activity and progress.
+      agent: "connected_issues_analyzer"
+      expected_output: "Epic-level summary synthesized from recently updated connected issues" 

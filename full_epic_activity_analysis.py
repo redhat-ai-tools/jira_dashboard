@@ -11,6 +11,17 @@ import json
 from datetime import datetime, timedelta
 from crewai import Agent, Task, Crew, LLM
 from crewai_tools import MCPServerAdapter
+from helper_func import (
+    load_agents_config, 
+    load_tasks_config, 
+    create_agent_from_config,
+    create_task_from_config,
+    create_agents,
+    format_timestamp,
+    is_timestamp_within_days,
+    extract_json_from_result,
+    post_process_summary_timestamps
+)
 
 # Configure Gemini LLM
 gemini_api_key = os.getenv("GEMINI_API_KEY")
@@ -31,163 +42,9 @@ server_params = {
     }
 }
 
-def create_agent(mcp_tools):
-    """Create agent for comprehensive epic analysis"""
-    return Agent(
-        role="Comprehensive Epic Analyst",
-        goal="Analyze KONFLUX epics and their connected issues for recent activity",
-        backstory="You systematically analyze epic relationships and track recent updates across all connected issues.",
-        tools=mcp_tools,
-        llm=llm,
-        verbose=False
-    )
 
-def create_epic_content_analyzer(mcp_tools):
-    """Create specialized agent for analyzing connected issues and synthesizing epic insights"""
-    return Agent(
-        role="Connected Issues Analyzer and Epic Synthesizer",
-        goal="Analyze recently updated connected issues and synthesize epic-level insights from their collective progress",
-        backstory="""You are an expert at analyzing JIRA issues and their connections to epics. 
-        You examine individual issues to understand what work was done, their purpose, and recent activity.
-        Then you synthesize insights across multiple connected issues to create comprehensive epic-level 
-        summaries that show overall progress, challenges, and direction. You focus on recent activity 
-        and how individual issue progress contributes to the broader epic goals.
-        
-        CRITICAL: You NEVER mention specific dates or timestamps in your summaries. All necessary 
-        dates are pre-formatted in the data provided to you. Focus on work content and progress, 
-        not date details. Use only relative terms like "recently updated" if timing is relevant.""",
-        tools=mcp_tools,
-        llm=llm,
-        verbose=False
-    )
 
-def extract_json_from_result(result_text):
-    """Extract JSON data from CrewAI result, handling cases where agent adds extra text after JSON"""
-    if isinstance(result_text, dict):
-        return result_text
-    
-    if hasattr(result_text, 'raw'):
-        if isinstance(result_text.raw, dict):
-            return result_text.raw
-        elif isinstance(result_text.raw, str):
-            try:
-                return json.loads(result_text.raw)
-            except:
-                pass
-    
-    result_str = str(result_text).strip()
-    
-    # First try to parse the full string as JSON
-    try:
-        return json.loads(result_str)
-    except:
-        # If full string parsing fails, try to extract just the JSON part
-        # This handles cases where agent adds extra text after JSON
-        if result_str.startswith('{'):
-            # Find the matching closing brace
-            brace_count = 0
-            end_pos = 0
-            for i, char in enumerate(result_str):
-                if char == '{':
-                    brace_count += 1
-                elif char == '}':
-                    brace_count -= 1
-                    if brace_count == 0:
-                        end_pos = i + 1
-                        break
-            if end_pos > 0:
-                json_part = result_str[:end_pos]
-                try:
-                    return json.loads(json_part)
-                except:
-                    pass
-        elif result_str.startswith('['):
-            # Find the matching closing bracket
-            bracket_count = 0
-            end_pos = 0
-            for i, char in enumerate(result_str):
-                if char == '[':
-                    bracket_count += 1
-                elif char == ']':
-                    bracket_count -= 1
-                    if bracket_count == 0:
-                        end_pos = i + 1
-                        break
-            if end_pos > 0:
-                json_part = result_str[:end_pos]
-                try:
-                    return json.loads(json_part)
-                except:
-                    pass
-    
-    # Debug: print the actual result structure to understand what we're getting
-    print(f"Debug: result_text type: {type(result_text)}")
-    print(f"Debug: result_text content preview: {str(result_text)[:200]}...")
-    
-    return None
 
-def is_within_last_two_weeks(timestamp):
-    """Check if timestamp is within the last 14 days"""
-    if not timestamp:
-        return False
-    
-    try:
-        # Handle JIRA timestamp format: "1753460716.477000000 1440"
-        if isinstance(timestamp, str):
-            timestamp_parts = timestamp.strip().split()
-            if timestamp_parts:
-                timestamp_str = timestamp_parts[0]
-                if '.' in timestamp_str:
-                    timestamp_float = float(timestamp_str)
-                else:
-                    timestamp_float = float(timestamp_str)
-                dt = datetime.fromtimestamp(timestamp_float)
-            else:
-                return False
-        elif isinstance(timestamp, (int, float)):
-            dt = datetime.fromtimestamp(timestamp)
-        else:
-            return False
-        
-        # Check if within last 14 days
-        cutoff_date = datetime.now() - timedelta(days=14)
-        return dt >= cutoff_date
-        
-    except Exception as e:
-        return False
-
-def format_timestamp(timestamp):
-    """Convert timestamp to readable format"""
-    try:
-        if isinstance(timestamp, str):
-            timestamp_parts = timestamp.strip().split()
-            if timestamp_parts:
-                timestamp_str = timestamp_parts[0]
-                timestamp_float = float(timestamp_str)
-                dt = datetime.fromtimestamp(timestamp_float)
-                return dt.strftime("%Y-%m-%d %H:%M:%S")
-        return "Unknown"
-    except:
-        return "Invalid"
-
-def post_process_summary_timestamps(text):
-    """Find and format any raw timestamps in summary text"""
-    import re
-    
-    # Pattern to match timestamps like "1752850611.021000000 1440" or just "1752850611.021000000"
-    timestamp_pattern = r'\b(1\d{9}(?:\.\d+)?)(?: \d+)?\b'
-    
-    def replace_timestamp(match):
-        timestamp_str = match.group(1)
-        try:
-            timestamp_float = float(timestamp_str)
-            dt = datetime.fromtimestamp(timestamp_float)
-            formatted_date = dt.strftime("%Y-%m-%d %H:%M:%S")
-            return formatted_date
-        except:
-            return match.group(0)  # Return original if conversion fails
-    
-    return re.sub(timestamp_pattern, replace_timestamp, text)
 
 def main():
     """Main analysis function"""
@@ -206,32 +63,18 @@ def main():
         with MCPServerAdapter(server_params) as mcp_tools:
             print(f"✅ Connected! Available tools: {[tool.name for tool in mcp_tools]}")
             
-            agent = create_agent(mcp_tools)
-            content_analyzer = create_epic_content_analyzer(mcp_tools)
+            # Create all agents from YAML configuration
+            agents = create_agents(mcp_tools, llm)
+            
+            # Load tasks configuration
+            tasks_config = load_tasks_config()
             
             # Task 1: Get all KONFLUX epics (we know there are 9 from previous run)
-            get_epics_task = Task(
-                description="""
-                Use list_jira_issues to get all KONFLUX epics:
-                
-                Call list_jira_issues with:
-                - project='KONFLUX'
-                - issue_type='16' (Epic)
-                - limit=50
-                - status='10018'
-                
-                CRITICAL: Return the complete list of epics with complete information as VALID JSON.
-                Your response must be parseable JSON, not text description.
-                Ensure the response contains the exact JSON structure returned by the MCP tool.
-                """,
-                agent=agent,
-                expected_output="Valid JSON data containing KONFLUX epics - must be parseable as JSON",
-                output_file="in_progress_epics.json"
-            )
+            get_epics_task = create_task_from_config("get_epics_task", tasks_config['tasks']['get_epics_task'], agents)
             
             # Create crew for epic discovery
             crew = Crew(
-                agents=[agent],
+                agents=[agents['comprehensive_epic_analyst']],
                 tasks=[get_epics_task],
                 verbose=True
             )
@@ -269,24 +112,15 @@ def main():
                         
                         # Get links for this epic
                         try:
-                            links_task = Task(
-                                description=f"""
-                                Use get_jira_issue_links to get all connections for epic {epic_key}.
-                                
-                                Call get_jira_issue_links with:
-                                - issue_key='{epic_key}'
-                                
-                                CRITICAL: Return all connected issues and their relationship information as VALID JSON.
-                                Your response must be the exact JSON structure returned by the MCP tool.
-                                Do not add any text description or explanation - only return parseable JSON.
-                                The JSON should contain 'links' array and other fields from the MCP response.
-                                """,
-                                agent=agent,
-                                expected_output=f"Valid parseable JSON data with all linked issues for epic {epic_key}"
+                            links_task = create_task_from_config(
+                                "epic_links_task", 
+                                tasks_config['tasks']['templates']['epic_links_task'], 
+                                agents,
+                                epic_key=epic_key
                             )
                             
                             links_crew = Crew(
-                                agents=[agent],
+                                agents=[agents['comprehensive_epic_analyst']],
                                 tasks=[links_task],
                                 verbose=True
                             )
@@ -327,23 +161,15 @@ def main():
                                             
                                             # Get child issue details
                                             try:
-                                                child_details_task = Task(
-                                                    description=f"""
-                                                    Use get_jira_issue_details to get update information for {child_key}.
-                                                    
-                                                    Call get_jira_issue_details with:
-                                                    - issue_key='{child_key}'
-                                                    
-                                                    CRITICAL: Return the issue details including the 'updated' timestamp as VALID JSON.
-                                                    Your response must be the exact JSON structure returned by the MCP tool.
-                                                    Do not add any text description - only return parseable JSON.
-                                                    """,
-                                                    agent=agent,
-                                                    expected_output=f"Valid parseable JSON data containing issue details for {child_key} including update timestamp"
+                                                child_details_task = create_task_from_config(
+                                                    "child_issue_details_task", 
+                                                    tasks_config['tasks']['templates']['child_issue_details_task'], 
+                                                    agents,
+                                                    child_key=child_key
                                                 )
                                                 
                                                 child_crew = Crew(
-                                                    agents=[agent],
+                                                    agents=[agents['comprehensive_epic_analyst']],
                                                     tasks=[child_details_task],
                                                     verbose=False
                                                 )
@@ -356,7 +182,7 @@ def main():
                                                     if child_data:
                                                         child_updated = child_data.get('updated', '')
                                                         
-                                                        if is_within_last_two_weeks(child_updated):
+                                                        if is_timestamp_within_days(child_updated, 14):
                                                             recently_updated_children.append({
                                                                 'key': child_key,
                                                                 'summary': child['summary'],
@@ -427,37 +253,16 @@ def main():
                                 
                                 try:
                                     # Get detailed issue information and create summary
-                                    issue_analysis_task = Task(
-                                        description=f"""
-                                        Use get_jira_issue_details to get comprehensive information for issue {child_key}.
-                                        
-                                        Call get_jira_issue_details with:
-                                        - issue_key='{child_key}'
-                                        
-                                        Then analyze the issue's description and comments to create a summary that includes:
-                                        
-                                        1. WORK DONE: What specific work was completed in this issue?
-                                        2. PURPOSE: What was this issue trying to achieve?
-                                        3. RECENT ACTIVITY: What was done in the recent updates (based on comments and activity)?
-                                        4. CURRENT STATUS: What is the current state of this issue?
-                                        5. CHALLENGES: Any obstacles or problems encountered?
-                                        
-                                        CRITICAL INSTRUCTIONS FOR DATES:
-                                        - NEVER mention any specific dates or timestamps in your summary
-                                        - Only use the pre-formatted date "{child['updated_formatted']}" if you need to reference when this issue was last updated
-                                        - DO NOT make up, infer, calculate, or guess any creation dates, resolution dates, or other dates
-                                        - If you need to reference timing, use relative terms like "recently updated" instead of specific dates
-                                        - Focus on the work content, not date details
-                                        
-                                        Focus on recent activity and what this issue contributes to the overall epic.
-                                        Keep the summary concise but informative.
-                                        """,
-                                        agent=content_analyzer,
-                                        expected_output=f"Summary of recent activity and purpose for issue {child_key}"
+                                    issue_analysis_task = create_task_from_config(
+                                        "issue_content_analysis_task",
+                                        tasks_config['tasks']['templates']['issue_content_analysis_task'],
+                                        agents,
+                                        child_key=child_key,
+                                        updated_formatted=child['updated_formatted']
                                     )
                                     
                                     issue_crew = Crew(
-                                        agents=[content_analyzer],
+                                        agents=[agents['connected_issues_analyzer']],
                                         tasks=[issue_analysis_task],
                                         verbose=False
                                     )
@@ -502,37 +307,17 @@ def main():
                                         issues_text += f"Summary: {issue_sum['detailed_summary']}\n"
                                         issues_text += "-" * 50 + "\n"
                                     
-                                    epic_synthesis_task = Task(
-                                        description=f"""
-                                        Based on the following summaries of recently updated issues connected to epic {epic_key} ("{epic['summary']}"), 
-                                        create a comprehensive epic-level summary:
-
-                                        {issues_text}
-
-                                        Create an epic summary that includes:
-                                        
-                                        1. EPIC OVERVIEW: What this epic is achieving based on connected issues
-                                        2. RECENT PROGRESS: What work has been completed recently across connected issues  
-                                        3. KEY ACCOMPLISHMENTS: Major achievements from the recently updated issues
-                                        4. CURRENT FOCUS: What the team is currently working on
-                                        5. CHALLENGES & BLOCKERS: Any issues or obstacles identified
-                                        6. NEXT STEPS: What appears to be the planned next actions
-                                        
-                                        CRITICAL INSTRUCTIONS FOR DATES:
-                                        - NEVER mention specific dates or timestamps in your epic summary
-                                        - DO NOT make up, infer, calculate, or fabricate any creation dates, resolution dates, or other dates
-                                        - Use only relative timing terms like "recently updated" or "recently completed"
-                                        - The individual issue summaries above already contain properly formatted dates where needed
-                                        - Focus on synthesizing the work content and progress, not date details
-                                        
-                                        Synthesize insights from all the connected issues to provide a holistic view of this epic's recent activity and progress.
-                                        """,
-                                        agent=content_analyzer,
-                                        expected_output=f"Epic-level summary synthesized from recently updated connected issues"
+                                    epic_synthesis_task = create_task_from_config(
+                                        "epic_synthesis_task",
+                                        tasks_config['tasks']['templates']['epic_synthesis_task'],
+                                        agents,
+                                        epic_key=epic_key,
+                                        epic_summary=epic['summary'],
+                                        issues_text=issues_text
                                     )
                                     
                                     epic_crew = Crew(
-                                        agents=[content_analyzer],
+                                        agents=[agents['connected_issues_analyzer']],
                                         tasks=[epic_synthesis_task],
                                         verbose=False
                                     )
