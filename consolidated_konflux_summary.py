@@ -30,6 +30,8 @@ ANALYSIS_PERIOD_DAYS = 14  # Period for bug analysis
 # Configure Gemini LLM
 gemini_api_key = os.getenv("GEMINI_API_KEY")
 snowflake_token = os.getenv("SNOWFLAKE_TOKEN")
+url = os.getenv("SNOWFLAKE_URL")
+
 
 llm = LLM(
     model="gemini/gemini-2.5-pro",
@@ -39,7 +41,7 @@ llm = LLM(
 
 # MCP Server configuration
 server_params = {
-    "url": "https://jira-mcp-snowflake.mcp-playground-poc.devshift.net/sse",
+    "url": url,
     "transport": "sse",
     "headers": {
         "X-Snowflake-Token": snowflake_token
