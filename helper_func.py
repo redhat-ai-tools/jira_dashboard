@@ -439,4 +439,242 @@ def post_process_summary_timestamps(text):
         except:
             return match.group(0)  # Return original if conversion fails
     
-    return re.sub(timestamp_pattern, replace_timestamp, text) 
+    return re.sub(timestamp_pattern, replace_timestamp, text)
+
+
+# New helper functions from crewai_konflux_dashboard.py
+
+def filter_konflux_project_summary(project_summary_data):
+    """Filter project summary data to only include KONFLUX project"""
+    try:
+        if isinstance(project_summary_data, str):
+            import json
+            project_summary_data = json.loads(project_summary_data)
+        
+        if not isinstance(project_summary_data, dict):
+            return {"error": "Invalid project summary data format"}
+        
+        if "error" in project_summary_data:
+            return project_summary_data
+        
+        projects = project_summary_data.get("projects", {})
+        
+        # Look for KONFLUX project (case-insensitive)
+        konflux_project = None
+        for project_name, project_data in projects.items():
+            if project_name.upper() == "KONFLUX":
+                konflux_project = project_data
+                break
+        
+        if konflux_project is None:
+            return {
+                "error": "KONFLUX project not found in summary",
+                "available_projects": list(projects.keys()),
+                "total_projects_found": len(projects)
+            }
+        
+        # Return filtered summary with only KONFLUX data
+        return {
+            "project_name": "KONFLUX",
+            "total_issues": konflux_project.get("total_issues", 0),
+            "statuses": konflux_project.get("statuses", {}),
+            "priorities": konflux_project.get("priorities", {}),
+            "summary": {
+                "total_konflux_issues": konflux_project.get("total_issues", 0),
+                "status_breakdown": konflux_project.get("statuses", {}),
+                "priority_breakdown": konflux_project.get("priorities", {})
+            }
+        }
+        
+    except Exception as e:
+        return {"error": f"Error filtering KONFLUX project summary: {str(e)}"}
+
+
+class BugCalculator:
+    """Universal bug calculation logic for any priority level"""
+    
+    def __init__(self, priority_ids, priority_name="Priority"):
+        """
+        Initialize calculator for specific priority levels
+        
+        Args:
+            priority_ids: List of priority IDs to track (e.g., ["2"] for Critical, ["1"] for Blocker)
+            priority_name: Human-readable name for the priority (e.g., "Critical", "Blocker")
+        """
+        self.priority_ids = priority_ids
+        self.priority_name = priority_name
+        self.bug_type_ids = ["1"]  # Bug type only
+    
+    def is_target_priority(self, priority):
+        """Check if priority ID matches our target priority"""
+        if not priority:
+            return False
+        return str(priority).strip() in self.priority_ids
+    
+    def is_bug_type(self, issue_type):
+        """Check if issue type ID is a bug"""
+        if not issue_type:
+            return False
+        return str(issue_type).strip() in self.bug_type_ids
+    
+    def is_resolved(self, resolution_date):
+        """Check if issue is resolved using resolution_date field"""
+        return resolution_date is not None and str(resolution_date).strip() != "" and str(resolution_date).strip().lower() != "null"
+    
+    def is_within_last_month(self, timestamp):
+        """Check if timestamp is within the last 30 days"""
+        if not timestamp:
+            return False
+        
+        try:
+            # Handle JIRA timestamp format: "1753460716.477000000 1440"
+            if isinstance(timestamp, str):
+                timestamp_parts = timestamp.strip().split()
+                if timestamp_parts:
+                    timestamp_str = timestamp_parts[0]
+                    if '.' in timestamp_str:
+                        timestamp_float = float(timestamp_str)
+                    else:
+                        timestamp_float = float(timestamp_str)
+                    dt = datetime.fromtimestamp(timestamp_float)
+                else:
+                    return False
+            elif isinstance(timestamp, (int, float)):
+                dt = datetime.fromtimestamp(timestamp)
+            else:
+                return False
+            
+            # Check if within last 30 days
+            cutoff_date = datetime.now() - timedelta(days=30)
+            return dt >= cutoff_date
+            
+        except Exception as e:
+            return False
+
+    def calculate_bug_metrics(self, issues):
+        """Calculate the 3 key bug metrics for the configured priority"""
+        priority_lower = self.priority_name.lower()
+        metrics = {
+            f'total_{priority_lower}_bugs': 0,
+            f'total_{priority_lower}_bugs_resolved': 0,
+            f'{priority_lower}_bugs_resolved_last_month': 0
+        }
+        
+        bugs_fixed = []
+        
+        for issue in issues:
+            issue_type = issue.get('issue_type', '')
+            priority = issue.get('priority', '')
+            resolution_date = issue.get('resolution_date', '')
+            
+            # Check if it's a target priority bug
+            is_bug = self.is_bug_type(issue_type)
+            is_target_priority = self.is_target_priority(priority) 
+            is_resolved = self.is_resolved(resolution_date)
+            
+            if is_bug and is_target_priority:
+                # 1. Total bugs of this priority
+                metrics[f'total_{priority_lower}_bugs'] += 1
+                
+                if is_resolved:
+                    # 2. Total bugs resolved (ever)
+                    metrics[f'total_{priority_lower}_bugs_resolved'] += 1
+                    
+                    # 3. Bugs resolved in last month
+                    if self.is_within_last_month(resolution_date):
+                        metrics[f'{priority_lower}_bugs_resolved_last_month'] += 1
+                        bugs_fixed.append({
+                            'key': issue.get('key', 'N/A'),
+                            'summary': issue.get('summary', 'N/A')[:100],
+                            'resolution_date': resolution_date
+                        })
+        
+        return metrics, bugs_fixed
+
+    # Legacy method names for backward compatibility with existing code
+    def calculate_critical_bug_metrics(self, issues):
+        """Legacy method - use calculate_bug_metrics instead"""
+        return self.calculate_bug_metrics(issues)
+        
+    def calculate_blocker_bug_metrics(self, issues):
+        """Legacy method - use calculate_bug_metrics instead"""
+        return self.calculate_bug_metrics(issues)
+
+    def extract_json_from_result(self, result_text):
+        """Extract JSON data from CrewAI result"""
+        if isinstance(result_text, dict):
+            return result_text
+        
+        if hasattr(result_text, 'raw'):
+            if isinstance(result_text.raw, dict):
+                return result_text.raw
+            elif isinstance(result_text.raw, str):
+                try:
+                    return json.loads(result_text.raw)
+                except:
+                    pass
+        
+        # Try parsing as string
+        result_str = str(result_text).strip()
+        try:
+            return json.loads(result_str)
+        except:
+            # Try extracting JSON with brace matching
+            if result_str.startswith('{'):
+                brace_count = 0
+                in_string = False
+                escape_next = False
+                end_idx = -1
+                
+                for i, char in enumerate(result_str):
+                    if escape_next:
+                        escape_next = False
+                        continue
+                    if char == '\\' and in_string:
+                        escape_next = True
+                        continue
+                    if char == '"' and not escape_next:
+                        in_string = not in_string
+                        continue
+                    if not in_string:
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                end_idx = i + 1
+                                break
+                
+                if end_idx != -1:
+                    json_str = result_str[:end_idx]
+                    try:
+                        return json.loads(json_str)
+                    except:
+                        pass
+        
+        return None
+
+
+def extract_html_from_result(result_text):
+    """Extract HTML content from CrewAI result"""
+    # Convert result to string if it's not already
+    result_str = str(result_text)
+    
+    # Look for HTML content between ```html and ``` or just starting with <!DOCTYPE
+    html_patterns = [
+        r'```html\s*(<!DOCTYPE.*?)```',
+        r'(<!DOCTYPE html.*?)(?=```|\Z)',
+        r'(<!DOCTYPE.*)',
+    ]
+    
+    for pattern in html_patterns:
+        match = re.search(pattern, result_str, re.DOTALL | re.IGNORECASE)
+        if match:
+            html_content = match.group(1).strip()
+            # Clean up any remaining markdown artifacts
+            html_content = re.sub(r'^```html\s*', '', html_content)
+            html_content = re.sub(r'\s*```$', '', html_content)
+            return html_content
+    
+    # If no HTML found, return the raw result
+    return result_str 
