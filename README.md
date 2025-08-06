@@ -11,7 +11,7 @@ A comprehensive JIRA reporting and analysis system for the KONFLUX project, powe
 
 ## 📋 System Requirements
 
-- Python 3.8+
+- Python >=3.10 and <=3.13 (required by CrewAI)
 - Access to JIRA MCP Snowflake server
 - Environment variables configured (see setup section)
 
