@@ -30,9 +30,9 @@ export SNOWFLAKE_URL="your_jira_mcp_url"
 pip install crewai crewai-tools pyyaml
 
 # 3. Run analysis for your project (replace YOUR_PROJECT with your JIRA project key)
-python full_epic_activity_analysis.py --project YOUR_PROJECT --days 14
-python consolidated_summary.py --project YOUR_PROJECT --days 14
-python crewai_dashboard.py --project YOUR_PROJECT --days 14
+python full_epic_activity_analysis.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
+python consolidated_summary.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
+python crewai_dashboard.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
 ```
 
 ⚠️ **Important**: All scripts now require the `--project` parameter to specify which JIRA project to analyze.
@@ -70,7 +70,7 @@ pip install crewai crewai-tools pyyaml
 
 **Usage**:
 ```bash
-python full_epic_activity_analysis.py --project YOUR_PROJECT --days 14
+python full_epic_activity_analysis.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
 ```
 
 **Parameters**:
@@ -101,10 +101,10 @@ python full_epic_activity_analysis.py --project YOUR_PROJECT --days 14
 **Usage**:
 ```bash
 # Run epic analysis first (required dependency)
-python full_epic_activity_analysis.py --project YOUR_PROJECT --days 14
+python full_epic_activity_analysis.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
 
 # Then run consolidated summary
-python consolidated_summary.py --project YOUR_PROJECT --days 14
+python consolidated_summary.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
 ```
 
 **Parameters**:
@@ -137,7 +137,7 @@ python consolidated_summary.py --project YOUR_PROJECT --days 14
 
 **Usage**:
 ```bash
-python crewai_dashboard.py --project YOUR_PROJECT --days 14
+python crewai_dashboard.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
 ```
 
 **Parameters**:
