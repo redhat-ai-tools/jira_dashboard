@@ -29,7 +29,7 @@ export SNOWFLAKE_URL="your_jira_mcp_url"
 # 2. Install dependencies
 pip install crewai crewai-tools pyyaml
 
-# 3. Run analysis for your project (replace YOUR_PROJECT with your JIRA project key)
+# 3. Run analysis for your project (replace YOUR_PROJECT with your JIRA project key and NUMBER_OF_DAYS with the number of days to look back for analysis )
 python full_epic_activity_analysis.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
 python consolidated_summary.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
 python crewai_dashboard.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
