@@ -1,4 +1,4 @@
-# JIRA Dashboard and Analytics System
+# JIRA Dashboard and Reports
 
 A comprehensive JIRA reporting and analysis system powered by CrewAI agents and MCP (Model Context Protocol) tools. This system generates detailed reports on epics, bugs, stories, and tasks with automated analysis and insights for any JIRA project.
 
