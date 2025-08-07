@@ -177,6 +177,184 @@ Utility functions including:
 - Metrics calculation for items and bugs
 - Project-agnostic filtering and processing functions
 
+## Adding New Tasks
+
+To add a new task, you need to update the YAML configuration and use the appropriate helper functions:
+
+#### 1. Update `tasks.yaml`
+
+Add your new task under the `tasks:` section:
+
+```yaml
+tasks:
+  your_new_task:
+    description: |
+      Your task description here.
+      
+      Example task instructions:
+      - Call the MCP tool with specific parameters
+      - Return structured data in a specific format
+      - Follow any output format requirements
+   
+    agent: "agent_name_from_agents_yaml"
+    expected_output: "Description of expected output format"
+    output_file: "optional_output_file.json"  # Optional
+```
+
+**Required fields:**
+- `description`: Task instructions (can use template variables like `{project}`, `{timeframe}`)
+- `agent`: Agent name that will execute this task
+- `expected_output`: What the task should return
+
+**Optional fields:**
+- `output_file`: If the task should save output to a file
+- Any custom fields your task needs
+
+#### 2. Use Helper Functions
+
+In your Python script, use these helper functions from `helper_func.py`:
+
+```python
+from helper_func import (
+    load_tasks_config,
+    create_task_from_config,
+    create_agents
+)
+
+# Load task configuration
+tasks_config = load_tasks_config()
+
+# Create task with template variables
+your_task = create_task_from_config(
+    "your_new_task", 
+    tasks_config['tasks']['your_new_task'], 
+    agents_dict,
+    project="YOUR_PROJECT",   # Will substitute {project}
+    timeframe=14,             # Will substitute {timeframe}
+    custom_var="custom_value" # Will substitute {custom_var}
+)
+```
+
+**Available template variables:**
+- `{project}`: Project key (e.g., "QEMETRICS")
+- `{project_lower}`: Lowercase project key (e.g., "qemetrics")  
+- `{timeframe}`: Analysis timeframe in days
+- Any custom variables you pass to `create_task_from_config()`
+
+## Adding New Agents
+
+To add a new agent, you need to update the YAML configuration and use the appropriate helper functions:
+
+#### 1. Update `agents.yaml`
+
+Add your new agent under the `agents:` section:
+
+```yaml
+agents:
+  your_new_agent:
+    role: "Agent Role Title"
+    goal: "What this agent aims to accomplish"
+    backstory: |
+      Detailed description of the agent's expertise and background.
+      Explain what the agent specializes in and how it approaches tasks.
+      
+      Include any special instructions or constraints:
+      - What tools the agent uses
+      - How it formats responses
+      - Any critical behavioral guidelines
+    requires_tools: true  # true if agent needs tools, false otherwise
+    verbose: true         # true for detailed output, false for quiet
+```
+
+**Required fields:**
+- `role`: Short descriptive title
+- `goal`: What the agent is trying to achieve
+- `backstory`: Detailed agent description and instructions
+- `requires_tools`: Boolean - whether agent needs access to MCP tools
+- `verbose`: Boolean - whether agent should provide detailed output
+
+#### 2. Use Helper Functions
+
+In your Python script:
+
+```python
+from helper_func import (
+    load_agents_config,
+    create_agent_from_config,
+    create_agents
+)
+
+# Option 1: Create all agents at once
+agents = create_agents(mcp_tools, llm)
+your_agent = agents['your_new_agent']
+
+# Option 2: Create specific agent
+agents_config = load_agents_config()
+your_agent = create_agent_from_config(
+    'your_new_agent',
+    agents_config['agents']['your_new_agent'],
+    mcp_tools,  # Pass MCP tools if requires_tools: true
+    llm         # Pass LLM instance
+)
+```
+
+### Example: Adding a New Bug Severity Task
+
+1. **Add to `tasks.yaml`:**
+```yaml
+tasks:
+  high_priority_bugs_task:
+    description: |
+      Fetch HIGH priority bugs from {project} project.
+      
+      Call list_jira_issues with:
+      - project='{project}'
+      - issue_type='1'
+      - priority='3'
+      - timeframe={timeframe}
+      - limit=10
+      
+      Return only valid JSON from the MCP tool.
+    agent: "bug_fetcher"
+    expected_output: "Raw JSON data from list_jira_issues tool"
+    output_file: "high_priority_bugs.json"
+```
+
+2. **Add to `agents.yaml` (if needed):**
+```yaml
+agents:
+  bug_fetcher:
+    role: "JIRA Bug Data Fetcher"
+    goal: "Fetch bug data from JIRA efficiently"
+    backstory: "You systematically retrieve bug data using MCP tools."
+    requires_tools: true
+    verbose: true
+```
+
+3. **Use in Python script:**
+```python
+# Load configurations
+agents = create_agents(mcp_tools, llm)
+tasks_config = load_tasks_config()
+
+# Create task
+high_priority_task = create_task_from_config(
+    "high_priority_bugs_task",
+    tasks_config['tasks']['high_priority_bugs_task'],
+    agents,
+    project="QEMETRICS",
+    timeframe=14
+)
+
+# Execute task
+crew = Crew(
+    agents=[agents['bug_fetcher']],
+    tasks=[high_priority_task],
+    verbose=True
+)
+result = crew.kickoff()
+```
+
 ## 🤝 Contributing to the Project
 
 ### Getting Started
