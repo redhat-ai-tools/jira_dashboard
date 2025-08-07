@@ -236,8 +236,8 @@ your_task = create_task_from_config(
 ```
 
 **Available template variables:**
-- `{project}`: Project key (e.g., "QEMETRICS")
-- `{project_lower}`: Lowercase project key (e.g., "qemetrics")  
+- `{project}`: Project key 
+- `{project_lower}`: Lowercase project key   
 - `{timeframe}`: Analysis timeframe in days
 - Any custom variables you pass to `create_task_from_config()`
 
@@ -342,7 +342,7 @@ high_priority_task = create_task_from_config(
     "high_priority_bugs_task",
     tasks_config['tasks']['high_priority_bugs_task'],
     agents,
-    project="QEMETRICS",
+    project="PROJ",
     timeframe=14
 )
 
