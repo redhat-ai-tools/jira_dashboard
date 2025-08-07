@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-KONFLUX Dashboard Generator using CrewAI with MCP JIRA Snowflake Tools
-Uses real MCP SSE server to fetch KONFLUX data - NO HARDCODED DATA
+Project Dashboard Generator using CrewAI with MCP JIRA Snowflake Tools
+Uses real MCP SSE server to fetch project data - NO HARDCODED DATA
 """
 
 import os
@@ -14,7 +14,7 @@ from crewai_tools import MCPServerAdapter
 # Import helper functions
 from helper_func import (
     load_agents_config, load_tasks_config, create_agent_from_config, 
-    create_task_from_config, filter_konflux_project_summary, 
+    create_task_from_config, filter_project_summary, 
     BugCalculator, extract_html_from_result
 )
 
@@ -60,7 +60,7 @@ def create_agents_from_yaml(mcp_tools):
     
     return agents
 
-def create_tasks_from_yaml(agents_dict):
+def create_tasks_from_yaml(agents_dict, project, timeframe_days=14):
     """Create tasks from YAML configuration"""
     tasks_config = load_tasks_config()
     tasks = []
@@ -77,7 +77,11 @@ def create_tasks_from_yaml(agents_dict):
     for task_name in task_names:
         if task_name in tasks_config['tasks']:
             config = tasks_config['tasks'][task_name]
-            task = create_task_from_config(task_name, config, agents_dict)
+            # Pass project parameter, project_lower, and timeframe for template substitution
+            task = create_task_from_config(task_name, config, agents_dict, 
+                                         project=project, 
+                                         project_lower=project.lower(),
+                                         timeframe=timeframe_days)
             
             # Set context for generate_dashboard_task
             if task_name == 'generate_dashboard_task':
@@ -87,17 +91,23 @@ def create_tasks_from_yaml(agents_dict):
     
     return tasks
 
-def main():
+def main(project=None, timeframe_days=14):
     """Main function to run the CrewAI workflow"""
+    if not project:
+        raise ValueError("Project parameter is required. Please specify a JIRA project key using --project.")
+    
+    project = project.upper()  # Normalize to uppercase
+    
     try:
-        print("🚀 Starting KONFLUX Dashboard Generation with CrewAI...")
+        print(f"🚀 Starting {project} Dashboard Generation with CrewAI...")
+        print(f"📊 Analysis timeframe: {timeframe_days} days")
         print(f"📡 Connecting to MCP Server: {server_params['url']}")
         
         # Check if Gemini API key is available
         if not gemini_api_key:
             print("⚠️  Warning: GEMINI_API_KEY environment variable not set")
             print("💡 Please set GEMINI_API_KEY before running this script")
-            create_fallback_dashboard()
+            create_fallback_dashboard(project)
             return
         
         # Connect to MCP server and get tools using context manager
@@ -106,7 +116,7 @@ def main():
             
             # Create agents and tasks from YAML configurations
             agents_dict = create_agents_from_yaml(mcp_tools)
-            tasks_list = create_tasks_from_yaml(agents_dict)
+            tasks_list = create_tasks_from_yaml(agents_dict, project, timeframe_days)
             
             print(f"📋 Created {len(agents_dict)} agents and {len(tasks_list)} tasks from YAML configurations")
             
@@ -122,6 +132,14 @@ def main():
             
             print("📝 Processing CrewAI result...")
             
+            # Debug: Check if we have task outputs
+            if hasattr(result, 'tasks_output'):
+                print(f"📊 Got {len(result.tasks_output)} task results")
+                for i, task_output in enumerate(result.tasks_output):
+                    print(f"   Task {i+1}: {type(task_output)} - {str(task_output)[:100]}...")
+            else:
+                print("⚠️  No task outputs found in result")
+            
             # Process project summary data if available
             project_summary_data = None
             try:
@@ -129,18 +147,28 @@ def main():
                 if hasattr(result, 'tasks_output') and len(result.tasks_output) >= 4:
                     project_summary_result = result.tasks_output[3]
                     
-                    # Extract and filter project summary data
-                    raw_summary = str(project_summary_result)
-                    project_summary_data = filter_konflux_project_summary(raw_summary)
+                    print(f"🔍 Raw project summary result: {str(project_summary_result)[:200]}...")
+                    
+                    # Try to parse as JSON directly first
+                    raw_summary = str(project_summary_result).strip()
+                    try:
+                        # First try to parse the raw result as JSON
+                        import json
+                        project_summary_data = json.loads(raw_summary)
+                        print("✅ Successfully parsed project summary as direct JSON")
+                    except json.JSONDecodeError as e:
+                        print(f"⚠️  Direct JSON parsing failed: {e}")
+                        print(f"🔧 Trying filter_project_summary function...")
+                        # Fall back to the filter function
+                        project_summary_data = filter_project_summary(raw_summary, project)
                     
                     if "error" not in project_summary_data:
                         print(f"📊 Project Summary Data:")
-                        print(f"   Total KONFLUX Issues: {project_summary_data.get('total_issues', 0)}")
                         print(f"   Status Breakdown: {project_summary_data.get('statuses', {})}")
                         print(f"   Priority Breakdown: {project_summary_data.get('priorities', {})}")
                         
                         # Save project summary for potential use
-                        with open('konflux_project_summary.json', 'w') as f:
+                        with open(f'{project.lower()}_project_summary.json', 'w') as f:
                             json.dump(project_summary_data, f, indent=2)
                     else:
                         print(f"⚠️  Project summary error: {project_summary_data.get('error', 'Unknown error')}")
@@ -292,18 +320,19 @@ def main():
                 print("⚠️  Blocker bugs JSON file not found")
             
             # Save the HTML file
-            with open('konflux_real_dashboard.html', 'w', encoding='utf-8') as f:
+            dashboard_filename = f'{project.lower()}_real_dashboard.html'
+            with open(dashboard_filename, 'w', encoding='utf-8') as f:
                 f.write(html_content)
             
             print("✅ Dashboard generation completed!")
-            print(f"📊 Dashboard saved as: konflux_real_dashboard.html")
+            print(f"📊 Dashboard saved as: {dashboard_filename}")
             print(f"📏 HTML file size: {len(html_content)} characters")
             print("🔥 Critical bug metrics included in dashboard")
             print("🚫 Blocker bug metrics included in dashboard")
             
             # Verify the file was created properly
-            if os.path.exists('konflux_real_dashboard.html'):
-                file_size = os.path.getsize('konflux_real_dashboard.html')
+            if os.path.exists(dashboard_filename):
+                file_size = os.path.getsize(dashboard_filename)
                 print(f"✅ File verification: {file_size} bytes written successfully")
             else:
                 print("❌ File verification failed: File not found")
@@ -313,24 +342,24 @@ def main():
     except Exception as e:
         print(f"❌ Error: {str(e)}")
         print("💡 Fallback: Creating dashboard with error message...")
-        create_fallback_dashboard()
+        create_fallback_dashboard(project)
 
-def create_fallback_dashboard():
+def create_fallback_dashboard(project=None):
     """Create a simple dashboard if MCP connection fails"""
-    html_content = '''<!DOCTYPE html>
+    html_content = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KONFLUX Dashboard - Connection Error</title>
+    <title>{project} Dashboard - Connection Error</title>
     <style>
-        body { 
+        body {{ 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
             margin: 40px; 
             text-align: center; 
             background: #f5f5f5;
-        }
-        .error { 
+        }}
+        .error {{ 
             color: #d32f2f; 
             background: #ffebee; 
             padding: 30px; 
@@ -338,9 +367,9 @@ def create_fallback_dashboard():
             border-left: 4px solid #d32f2f;
             max-width: 600px;
             margin: 0 auto;
-        }
-        h1 { margin-bottom: 20px; }
-        p { margin: 10px 0; line-height: 1.6; }
+        }}
+        h1 {{ margin-bottom: 20px; }}
+        p {{ margin: 10px 0; line-height: 1.6; }}
     </style>
 </head>
 <body>
@@ -354,9 +383,18 @@ def create_fallback_dashboard():
 </body>
 </html>'''
     
-    with open('konflux_real_dashboard.html', 'w') as f:
+    fallback_filename = f'{project.lower()}_real_dashboard.html'
+    with open(fallback_filename, 'w') as f:
         f.write(html_content)
-    print("📄 Fallback dashboard created")
+    print(f"📄 Fallback dashboard created: {fallback_filename}")
 
 if __name__ == "__main__":
-    main() 
+    import argparse
+    parser = argparse.ArgumentParser(description='Generate project dashboard using CrewAI')
+    parser.add_argument('--project', '-p', type=str, required=True,
+                       help='JIRA project key to analyze (required)')
+    parser.add_argument('--days', '-d', type=int, default=14,
+                       help='Number of days to look back for analysis (default: 14)')
+    
+    args = parser.parse_args()
+    main(project=args.project, timeframe_days=args.days) 

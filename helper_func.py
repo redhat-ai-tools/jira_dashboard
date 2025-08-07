@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Helper functions for the Consolidated KONFLUX Summary Generator
+Helper functions
 """
 
 import os
@@ -442,10 +442,9 @@ def post_process_summary_timestamps(text):
     return re.sub(timestamp_pattern, replace_timestamp, text)
 
 
-# New helper functions from crewai_konflux_dashboard.py
 
-def filter_konflux_project_summary(project_summary_data):
-    """Filter project summary data to only include KONFLUX project"""
+def filter_project_summary(project_summary_data, project):
+    """Filter project summary data to only include specified project"""
     try:
         if isinstance(project_summary_data, str):
             import json
@@ -459,35 +458,35 @@ def filter_konflux_project_summary(project_summary_data):
         
         projects = project_summary_data.get("projects", {})
         
-        # Look for KONFLUX project (case-insensitive)
-        konflux_project = None
+        # Look for specified project (case-insensitive)
+        target_project = None
         for project_name, project_data in projects.items():
-            if project_name.upper() == "KONFLUX":
-                konflux_project = project_data
+            if project_name.upper() == project.upper():
+                target_project = project_data
                 break
         
-        if konflux_project is None:
+        if target_project is None:
             return {
-                "error": "KONFLUX project not found in summary",
+                "error": f"{project} project not found in summary",
                 "available_projects": list(projects.keys()),
                 "total_projects_found": len(projects)
             }
         
-        # Return filtered summary with only KONFLUX data
+        # Return filtered summary with only specified project data
         return {
-            "project_name": "KONFLUX",
-            "total_issues": konflux_project.get("total_issues", 0),
-            "statuses": konflux_project.get("statuses", {}),
-            "priorities": konflux_project.get("priorities", {}),
+            "project_name": project,
+            "total_issues": target_project.get("total_issues", 0),
+            "statuses": target_project.get("statuses", {}),
+            "priorities": target_project.get("priorities", {}),
             "summary": {
-                "total_konflux_issues": konflux_project.get("total_issues", 0),
-                "status_breakdown": konflux_project.get("statuses", {}),
-                "priority_breakdown": konflux_project.get("priorities", {})
+                f"total_{project.lower()}_issues": target_project.get("total_issues", 0),
+                "status_breakdown": target_project.get("statuses", {}),
+                "priority_breakdown": target_project.get("priorities", {})
             }
         }
         
     except Exception as e:
-        return {"error": f"Error filtering KONFLUX project summary: {str(e)}"}
+        return {"error": f"Error filtering {project} project summary: {str(e)}"}
 
 
 class BugCalculator:

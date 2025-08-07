@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Consolidated KONFLUX Summary Generator
+Consolidated Summary Generator
 Reads the recently_updated_epics_summary.txt file and creates a consolidated summary containing:
 1. Epic-level summaries only (extracted from existing file)
-2. Critical/blocker bugs analysis from KONFLUX project (last 14 days)
+2. Critical/blocker bugs analysis for project (configurable days)
 """
 
 import os
 import json
+import argparse
 from datetime import datetime, timedelta
 from crewai import Agent, Task, Crew, LLM
 from crewai_tools import MCPServerAdapter
@@ -23,9 +24,6 @@ from helper_func import (
     extract_json_from_result,
     parse_epic_summaries
 )
-
-# Configuration
-ANALYSIS_PERIOD_DAYS = 14  # Period for bug analysis
 
 # Configure Gemini LLM
 gemini_api_key = os.getenv("GEMINI_API_KEY")
@@ -48,20 +46,29 @@ server_params = {
     }
 }
 
-def main():
-    """Main function to create consolidated summary"""
-    print("🎯 KONFLUX Consolidated Summary Generator")
+def main(analysis_period_days=14, project=None):
+    """Main function to create consolidated summary
+    
+    Args:
+        analysis_period_days (int): Number of days to look back for analysis (default: 14)
+        project (str): JIRA project key to analyze (required)
+    """
+    if not project:
+        raise ValueError("Project parameter is required. Please specify a JIRA project key using --project.")
+    
+    project = project.upper()  # Normalize to uppercase
+    print(f"🎯 {project} Consolidated Summary Generator")
     print("="*80)
     print("📋 This will create separate analysis files:")
     print("   1. Epic progress analysis (filtered for significant changes)")
-    print(f"   2. Critical/blocker bugs analysis from KONFLUX project (last {ANALYSIS_PERIOD_DAYS} days)")
-    print(f"   3. Stories and tasks analysis from KONFLUX project (last {ANALYSIS_PERIOD_DAYS} days)")
+    print(f"   2. Critical/blocker bugs analysis from {project} project (last {analysis_period_days} days)")
+    print(f"   3. Stories and tasks analysis from {project} project (last {analysis_period_days} days)")
     print("\n📄 Output files generated:")
-    print("   • konflux_consolidated_summary.txt - Epic progress summary only")
+    print(f"   • {project.lower()}_consolidated_summary.txt - Epic progress summary only")
     print("   • epic_summaries_only.txt - Complete epic summaries for reference")
     print("   • epic_progress_analysis.txt - Standalone epic progress analysis")
-    print("   • konflux_bugs_analysis.txt - Complete bugs analysis")
-    print("   • konflux_stories_tasks_analysis.txt - Stories and tasks analysis")
+    print(f"   • {project.lower()}_bugs_analysis.txt - Complete bugs analysis")
+    print(f"   • {project.lower()}_stories_tasks_analysis.txt - Stories and tasks analysis")
     print("="*80)
     
     if not gemini_api_key:
@@ -81,7 +88,7 @@ def main():
     epic_summaries_filename = 'epic_summaries_only.txt'
     
     with open(epic_summaries_filename, 'w', encoding='utf-8') as f:
-        f.write("KONFLUX EPIC SUMMARIES FOR ANALYSIS\n")
+        f.write("EPIC SUMMARIES FOR ANALYSIS\n")
         f.write("=" * 80 + "\n")
         f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"Total Epics: {len(epic_summaries)}\n")
@@ -96,7 +103,7 @@ def main():
     print(f"✅ Epic summaries saved to: {epic_summaries_filename}")
     
     # Step 2: Fetch and analyze critical/blocker bugs
-    print(f"\n🐛 Step 2: Analyzing critical/blocker bugs from KONFLUX (last {ANALYSIS_PERIOD_DAYS} days)...")
+    print(f"\n🐛 Step 2: Analyzing critical/blocker bugs from {project} (last {analysis_period_days} days)...")
     
     try:
         with MCPServerAdapter(server_params) as mcp_tools:
@@ -110,11 +117,11 @@ def main():
             
             # Fetch critical bugs (priority 1 - Blocker)
             print("   🔍 Fetching blocker bugs (priority=1)...")
-            blocker_task = create_task_from_config("blocker_task", tasks_config['tasks']['blocker_task'], agents)
+            blocker_task = create_task_from_config("blocker_task", tasks_config['tasks']['blocker_task'], agents, timeframe=analysis_period_days, project=project)
             
             # Fetch critical bugs (priority 2 - Critical)
             print("   🔍 Fetching critical bugs (priority=2)...")
-            critical_task = create_task_from_config("critical_task", tasks_config['tasks']['critical_task'], agents)
+            critical_task = create_task_from_config("critical_task", tasks_config['tasks']['critical_task'], agents, timeframe=analysis_period_days, project=project)
             
             # Execute bug fetching
             bug_crew = Crew(
@@ -162,7 +169,7 @@ def main():
             
             # Calculate bug metrics programmatically (no LLM needed)
             print(f"   🧮 Calculating bug metrics...")
-            bug_metrics_result = calculate_item_metrics(all_bugs, ANALYSIS_PERIOD_DAYS, "bug")
+            bug_metrics_result = calculate_item_metrics(all_bugs, analysis_period_days, "bug")
             bug_metrics = bug_metrics_result['metrics']
             recent_activity_bugs = bug_metrics_result['recent_activity_items']
             recently_created_bugs = bug_metrics_result['recently_created_items']
@@ -285,7 +292,7 @@ def main():
             epic_analysis_filename = 'epic_progress_analysis.txt'
             
             with open(epic_analysis_filename, 'w', encoding='utf-8') as f:
-                f.write("KONFLUX EPIC PROGRESS ANALYSIS\n")
+                f.write("EPIC PROGRESS ANALYSIS\n")
                 f.write("=" * 80 + "\n")
                 f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                 f.write(f"Source: Analysis of {len(epic_summaries)} epic summaries\n")
@@ -300,13 +307,13 @@ def main():
             print(f"\n🐛 Step 4: Generating bugs analysis file...")
             
             try:
-                bugs_filename = 'konflux_bugs_analysis.txt'
+                bugs_filename = f'{project.lower()}_bugs_analysis.txt'
                 
                 with open(bugs_filename, 'w', encoding='utf-8') as f:
-                     f.write("KONFLUX CRITICAL/BLOCKER BUGS ANALYSIS\n")
+                     f.write(f"{project} CRITICAL/BLOCKER BUGS ANALYSIS\n")
                      f.write("=" * 80 + "\n")
                      f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                     f.write(f"Analysis Period: Last {ANALYSIS_PERIOD_DAYS} days\n")
+                     f.write(f"Analysis Period: Last {analysis_period_days} days\n")
                      f.write("=" * 80 + "\n\n")
                      
                      # Write calculated metrics
@@ -357,15 +364,15 @@ def main():
             print(f"✅ Bugs analysis saved to: {bugs_filename}")
             
             # Step 5: Fetch and analyze stories and tasks
-            print(f"\n📋 Step 5: Analyzing stories and tasks from KONFLUX (last {ANALYSIS_PERIOD_DAYS} days)...")
+            print(f"\n📋 Step 5: Analyzing stories and tasks from {project} (last {analysis_period_days} days)...")
             
             # Fetch stories (issue_type=17)
             print("   📖 Fetching stories (issue_type=17)...")
-            stories_task = create_task_from_config("stories_task", tasks_config['tasks']['stories_task'], agents)
+            stories_task = create_task_from_config("stories_task", tasks_config['tasks']['stories_task'], agents, timeframe=analysis_period_days, project=project)
             
             # Fetch tasks (issue_type=3)
             print("   📝 Fetching tasks (issue_type=3)...")
-            tasks_task = create_task_from_config("tasks_task", tasks_config['tasks']['tasks_task'], agents)
+            tasks_task = create_task_from_config("tasks_task", tasks_config['tasks']['tasks_task'], agents, timeframe=analysis_period_days, project=project)
             
             # Execute stories and tasks fetching
             stories_tasks_crew = Crew(
@@ -436,17 +443,17 @@ def main():
             
             # Calculate stories and tasks metrics programmatically
             print(f"   🧮 Calculating stories and tasks metrics...")
-            stories_metrics_result = calculate_item_metrics(all_stories_tasks, ANALYSIS_PERIOD_DAYS, "stories_tasks")
+            stories_metrics_result = calculate_item_metrics(all_stories_tasks, analysis_period_days, "stories_tasks")
             stories_tasks_metrics = stories_metrics_result['metrics']
             
             # Generate stories and tasks analysis file
-            stories_tasks_filename = 'konflux_stories_tasks_analysis.txt'
+            stories_tasks_filename = f'{project.lower()}_stories_tasks_analysis.txt'
             
             with open(stories_tasks_filename, 'w', encoding='utf-8') as f:
-                f.write("KONFLUX STORIES AND TASKS ANALYSIS\n")
+                f.write(f"{project} STORIES AND TASKS ANALYSIS\n")
                 f.write("=" * 80 + "\n")
                 f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"Analysis Period: Last {ANALYSIS_PERIOD_DAYS} days\n")
+                f.write(f"Analysis Period: Last {analysis_period_days} days\n")
                 f.write("=" * 80 + "\n\n")
                 
                 # Write summary metrics (calculated programmatically)
@@ -590,13 +597,13 @@ def main():
             # Step 6: Generate consolidated summary (epics only)
             print(f"\n📄 Step 6: Generating consolidated summary...")
             
-            output_filename = 'konflux_consolidated_summary.txt'
+            output_filename = f'{project.lower()}_consolidated_summary.txt'
             
             with open(output_filename, 'w', encoding='utf-8') as f:
-                f.write("KONFLUX CONSOLIDATED SUMMARY\n")
+                f.write(f"{project} CONSOLIDATED SUMMARY\n")
                 f.write("=" * 80 + "\n")
                 f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"Analysis Period: Last {ANALYSIS_PERIOD_DAYS} days\n")
+                f.write(f"Analysis Period: Last {analysis_period_days} days\n")
                 f.write(f"Note: See '{bugs_filename}' for detailed bugs analysis\n")
                 f.write("=" * 80 + "\n\n")
                 
@@ -628,7 +635,7 @@ def main():
             print(f"   📈 Recently created items: {stories_tasks_metrics['items_created_recently']}")
             print(f"   ✅ Recently resolved items: {stories_tasks_metrics['items_resolved_recently']}")
             print(f"   🤖 Story/task LLM analyses: {len(story_task_analyses) if 'story_task_analyses' in locals() else 0}")
-            print(f"   📅 Analysis period: Last {ANALYSIS_PERIOD_DAYS} days")
+            print(f"   📅 Analysis period: Last {analysis_period_days} days")
             print(f"\n📄 OUTPUT FILES:")
             print(f"   📄 Consolidated summary (epics): {output_filename}")
             print(f"   📝 Epic summaries only: {epic_summaries_filename}")
@@ -640,4 +647,11 @@ def main():
         print(f"❌ Error: {str(e)}")
 
 if __name__ == "__main__":
-    main() 
+    parser = argparse.ArgumentParser(description='Generate consolidated project summary analysis')
+    parser.add_argument('--days', '-d', type=int, default=14, 
+                       help='Number of days to look back for analysis (default: 14)')
+    parser.add_argument('--project', '-p', type=str, required=True,
+                       help='JIRA project key to analyze (required)')
+    
+    args = parser.parse_args()
+    main(analysis_period_days=args.days, project=args.project) 

@@ -42,35 +42,35 @@ agents:
 
   bug_fetcher:
     role: "JIRA Bug Data Fetcher"
-    goal: "Fetch critical and blocker bugs from KONFLUX project efficiently"
+    goal: "Fetch critical and blocker bugs from specified project efficiently"
     backstory: "You systematically retrieve bug data from JIRA using the available tools."
     requires_tools: true
     verbose: true
 
   blocker_bug_fetcher:
     role: "JIRA Blocker Bug Fetcher"
-    goal: "Fetch BLOCKER bugs (priority=1) from KONFLUX project"
+    goal: "Fetch BLOCKER bugs (priority=1) from specified project"
     backstory: "You are specialized in retrieving BLOCKER priority bugs (priority=1) from JIRA. You ONLY fetch bugs with priority=1."
     requires_tools: true
     verbose: true
 
   critical_bug_fetcher:
     role: "JIRA Critical Bug Fetcher"
-    goal: "Fetch CRITICAL bugs (priority=2) from KONFLUX project"
+    goal: "Fetch CRITICAL bugs (priority=2) from specified project"
     backstory: "You are specialized in retrieving CRITICAL priority bugs (priority=2) from JIRA. You ONLY fetch bugs with priority=2."
     requires_tools: true
     verbose: true
 
   story_fetcher:
     role: "JIRA Story Data Fetcher"
-    goal: "Fetch story issues from KONFLUX project efficiently"
+    goal: "Fetch story issues from specified project efficiently"
     backstory: "You systematically retrieve story data from JIRA using the available tools."
     requires_tools: true
     verbose: true
 
   task_fetcher:
     role: "JIRA Task Data Fetcher"
-    goal: "Fetch task issues from KONFLUX project efficiently"
+    goal: "Fetch task issues from specified project efficiently"
     backstory: "You systematically retrieve task data from JIRA using the available tools."
     requires_tools: true
     verbose: true
@@ -98,7 +98,7 @@ agents:
 
   comprehensive_epic_analyst:
     role: "Comprehensive Epic Analyst"
-    goal: "Analyze KONFLUX epics and their connected issues for recent activity"
+    goal: "Analyze project epics and their connected issues for recent activity"
     backstory: "You systematically analyze epic relationships and track recent updates across all connected issues."
     requires_tools: true
     verbose: false
@@ -119,20 +119,20 @@ agents:
     requires_tools: true
     verbose: false
 
-  # New agents from crewai_konflux_dashboard.py
+  
   jira_data_analyst:
     role: "JIRA Data Analyst"
-    goal: "Fetch comprehensive KONFLUX project data from JIRA Snowflake using MCP tools"
+    goal: "Fetch comprehensive project data from JIRA Snowflake using MCP tools"
     backstory: |
       You are a data analyst specializing in JIRA project analytics. 
-      You use MCP JIRA Snowflake tools to extract real-time data about KONFLUX projects.
+      You use MCP JIRA Snowflake tools to extract real-time data about specified projects.
       You never use hardcoded data and always fetch fresh information from the database.
     requires_tools: true
     verbose: true
 
   dashboard_developer:
     role: "Dashboard Developer"
-    goal: "Create a beautiful, interactive dashboard based on real KONFLUX data"
+    goal: "Create a beautiful, interactive dashboard based on real project data"
     backstory: |
       You are a frontend developer who creates stunning data visualizations.
       You take real JIRA data and transform it into interactive charts and dashboards 
@@ -143,7 +143,7 @@ agents:
 
   project_summary_analyst:
     role: "Project Summary Analyst"
-    goal: "Fetch comprehensive project summary from JIRA and filter for KONFLUX data"
+    goal: "Fetch comprehensive project summary from JIRA and filter for specified project data"
     backstory: |
       You are a project analytics specialist who fetches comprehensive project 
       summaries from JIRA Snowflake and filters the data to focus on specific projects.

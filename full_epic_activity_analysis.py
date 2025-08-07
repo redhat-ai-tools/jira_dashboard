@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Full KONFLUX Epic Activity Analysis
-Finds epics where connected issues were updated in the last 2 weeks
+Full Epic Activity Analysis
+Finds epics where connected issues were updated in the configurable period
 Implements the complete strategy from the previous analysis
 Now includes comprehensive epic content analysis and summary generation
 """
 
 import os
 import json
+import argparse
 from datetime import datetime, timedelta
 from crewai import Agent, Task, Crew, LLM
 from crewai_tools import MCPServerAdapter
@@ -22,9 +23,6 @@ from helper_func import (
     extract_json_from_result,
     post_process_summary_timestamps
 )
-
-# Configuration
-ANALYSIS_PERIOD_DAYS = 14  # Period for epic connected issues analysis
 
 # Configure Gemini LLM
 gemini_api_key = os.getenv("GEMINI_API_KEY")
@@ -50,11 +48,20 @@ server_params = {
 
 
 
-def main():
-    """Main analysis function"""
-    print("🎯 KONFLUX Epic Connected Issues Analysis (Last 2 Weeks)")
+def main(analysis_period_days=14, project=None):
+    """Main analysis function
+    
+    Args:
+        analysis_period_days (int): Number of days to look back for analysis (default: 14)
+        project (str): JIRA project key to analyze (required)
+    """
+    if not project:
+        raise ValueError("Project parameter is required. Please specify a JIRA project key using --project.")
+    
+    project = project.upper()  # Normalize to uppercase
+    print(f"🎯 {project} Epic Connected Issues Analysis (Last {analysis_period_days} Days)")
     print("="*80)
-    print("📋 This will analyze all KONFLUX epics and their connected issues")
+    print(f"📋 This will analyze all {project} epics and their connected issues")
     print("🔍 Looking for epics where connected issues were updated recently")
     print("📝 Will generate comprehensive summaries for active epics")
     print("="*80)
@@ -73,8 +80,8 @@ def main():
             # Load tasks configuration
             tasks_config = load_tasks_config()
             
-            # Task 1: Get all KONFLUX epics (we know there are 9 from previous run)
-            get_epics_task = create_task_from_config("get_epics_task", tasks_config['tasks']['get_epics_task'], agents)
+            # Task 1: Get all project epics
+            get_epics_task = create_task_from_config("get_epics_task", tasks_config['tasks']['get_epics_task'], agents, project=project)
             
             # Create crew for epic discovery
             crew = Crew(
@@ -83,7 +90,7 @@ def main():
                 verbose=True
             )
             
-            print("📡 Phase 1: Fetching all KONFLUX epics...")
+            print(f"📡 Phase 1: Fetching all {project} epics...")
             result = crew.kickoff()
             
             # Extract epics data
@@ -93,17 +100,17 @@ def main():
                 
                 if epics_data and 'issues' in epics_data:
                     epics = epics_data['issues']
-                    print(f"✅ Found {len(epics)} KONFLUX epics")
+                    print(f"✅ Found {len(epics)} {project} epics")
                     
                     # Phase 2: Analyze each epic's connected issues
                     print("\n📡 Phase 2: Analyzing connected issues for each epic...")
                     print("="*80)
                     
                     active_epics = []
-                    cutoff_date = datetime.now() - timedelta(days=ANALYSIS_PERIOD_DAYS)
+                    cutoff_date = datetime.now() - timedelta(days=analysis_period_days)
                     cutoff_str = cutoff_date.strftime("%Y-%m-%d %H:%M:%S")
                     
-                    print(f"🕒 Cutoff date: {cutoff_str} ({ANALYSIS_PERIOD_DAYS} days ago)")
+                    print(f"🕒 Cutoff date: {cutoff_str} ({analysis_period_days} days ago)")
                     print("="*80)
                     
                     for i, epic in enumerate(epics, 1):
@@ -175,7 +182,7 @@ def main():
                                                 child_crew = Crew(
                                                     agents=[agents['comprehensive_epic_analyst']],
                                                     tasks=[child_details_task],
-                                                    verbose=False
+                                                    verbose=True
                                                 )
                                                 
                                                 child_result = child_crew.kickoff()
@@ -186,7 +193,7 @@ def main():
                                                     if child_data:
                                                         child_updated = child_data.get('updated', '')
                                                         
-                                                        if is_timestamp_within_days(child_updated, ANALYSIS_PERIOD_DAYS):
+                                                        if is_timestamp_within_days(child_updated, analysis_period_days):
                                                             recently_updated_children.append({
                                                                 'key': child_key,
                                                                 'summary': child['summary'],
@@ -268,7 +275,7 @@ def main():
                                     issue_crew = Crew(
                                         agents=[agents['connected_issues_analyzer']],
                                         tasks=[issue_analysis_task],
-                                        verbose=False
+                                        verbose=True
                                     )
                                     
                                     issue_result = issue_crew.kickoff()
@@ -323,7 +330,7 @@ def main():
                                     epic_crew = Crew(
                                         agents=[agents['connected_issues_analyzer']],
                                         tasks=[epic_synthesis_task],
-                                        verbose=False
+                                        verbose=True
                                     )
                                     
                                     epic_result = epic_crew.kickoff()
@@ -355,10 +362,10 @@ def main():
                             print(f"\n📄 Saving epic summaries to file...")
                             
                             with open('recently_updated_epics_summary.txt', 'w', encoding='utf-8') as f:
-                                f.write("KONFLUX EPICS WITH RECENTLY UPDATED CONNECTED ISSUES\n")
+                                f.write(f"{project} EPICS WITH RECENTLY UPDATED CONNECTED ISSUES\n")
                                 f.write("=" * 80 + "\n")
                                 f.write(f"Analysis Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                                f.write(f"Analysis Period: Last {ANALYSIS_PERIOD_DAYS} days (since {cutoff_str})\n")
+                                f.write(f"Analysis Period: Last {analysis_period_days} days (since {cutoff_str})\n")
                                 f.write(f"Total Active Epics Found: {len(epic_summaries)}\n")
                                 f.write("=" * 80 + "\n\n")
                                 
@@ -416,31 +423,31 @@ def main():
                         'analysis_date': datetime.now().isoformat(),
                         'cutoff_date': cutoff_date.isoformat(),
                         'cutoff_date_formatted': cutoff_str,
-                        'analysis_scope': 'Connected issues for all KONFLUX epics',
+                        'analysis_scope': f'Connected issues for all {project} epics',
                         'total_epics_analyzed': len(epics),
                         'active_epics_count': len(active_epics),
                         'active_epics': active_epics,
                         'epic_summaries_generated': len(epic_summaries) if 'epic_summaries' in locals() else 0,
                         'summary': {
                             'strategy': 'Full connected issue analysis with content summaries',
-                            'criteria': f'Epics where connected issues updated in last {ANALYSIS_PERIOD_DAYS} days',
+                            'criteria': f'Epics where connected issues updated in last {analysis_period_days} days',
                             'total_recent_children': sum(epic['recent_children_count'] for epic in active_epics)
                         }
                     }
                     
-                    with open('konflux_full_epic_activity_analysis.json', 'w', encoding='utf-8') as f:
+                    with open(f'{project.lower()}_full_epic_activity_analysis.json', 'w', encoding='utf-8') as f:
                         json.dump(output_data, f, indent=2, ensure_ascii=False)
                     
-                    print(f"\n💾 Comprehensive analysis saved to: konflux_full_epic_activity_analysis.json")
+                    print(f"\n💾 Comprehensive analysis saved to: {project.lower()}_full_epic_activity_analysis.json")
                     
                     # Summary statistics
                     total_recent_children = sum(epic['recent_children_count'] for epic in active_epics)
                     print(f"\n📊 SUMMARY STATISTICS:")
-                    print(f"   📋 Total KONFLUX epics analyzed: {len(epics)}")
+                    print(f"   📋 Total {project} epics analyzed: {len(epics)}")
                     print(f"   🎯 Epics with recent connected updates: {len(active_epics)}")
                     print(f"   ⚡ Total recently updated connected issues: {total_recent_children}")
                     print(f"   📝 Epic content summaries generated: {len(epic_summaries) if 'epic_summaries' in locals() else 0}")
-                    print(f"   📅 Analysis period: Last {ANALYSIS_PERIOD_DAYS} days (since {cutoff_str})")
+                    print(f"   📅 Analysis period: Last {analysis_period_days} days (since {cutoff_str})")
                     
                 else:
                     print("❌ Could not extract epics data")
@@ -451,4 +458,11 @@ def main():
         print(f"❌ Error: {str(e)}")
 
 if __name__ == "__main__":
-    main() 
+    parser = argparse.ArgumentParser(description='Analyze project epic activity based on connected issues')
+    parser.add_argument('--days', '-d', type=int, default=14, 
+                       help='Number of days to look back for analysis (default: 14)')
+    parser.add_argument('--project', '-p', type=str, required=True,
+                       help='JIRA project key to analyze (required)')
+    
+    args = parser.parse_args()
+    main(analysis_period_days=args.days, project=args.project) 

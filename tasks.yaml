@@ -2,18 +2,18 @@ tasks:
   # Static tasks
   blocker_task:
     description: |
-      TASK: Use list_jira_issues to get all BLOCKER bugs from KONFLUX project with recent activity.
+      TASK: Use list_jira_issues to get all BLOCKER bugs from {project} project with recent activity.
       
       EXACT PARAMETERS TO USE:
-      - project='KONFLUX'
+      - project='{project}'
       - issue_type='1'
       - priority='1'
-      - timeframe=14
-      - limit=100
+      - timeframe={timeframe}
+      - limit=2
       
       CRITICAL INSTRUCTIONS:
       1. Call list_jira_issues with the exact parameters above
-      2. The timeframe=14 parameter gets bugs created/updated/resolved in last 14 days
+      2. The timeframe={timeframe} parameter gets bugs created/updated/resolved in last {timeframe} days
       3. Return ONLY the raw JSON output from the tool
       4. DO NOT add any explanations, thoughts, or additional text
       5. DO NOT add "Action:" or "Thought:" or any other text
@@ -24,14 +24,14 @@ tasks:
 
   critical_task:
     description: |
-      TASK: Use list_jira_issues to get all CRITICAL bugs from KONFLUX project.
+      TASK: Use list_jira_issues to get all CRITICAL bugs from {project} project.
       
       EXACT PARAMETERS TO USE:
-      - project='KONFLUX'
+      - project='{project}'
       - issue_type='1'
       - priority='2'
-      - timeframe=14
-      - limit=100
+      - timeframe={timeframe}
+      - limit=2
       
       CRITICAL INSTRUCTIONS:
       1. Call list_jira_issues with the exact parameters above
@@ -45,36 +45,36 @@ tasks:
 
   stories_task:
     description: |
-      Use list_jira_issues to get all STORY issues from KONFLUX project:
+      Use list_jira_issues to get all STORY issues from {project} project:
       
       Call list_jira_issues with:
-      - project='KONFLUX'
+      - project='{project}'
       - issue_type='17' (Story)
-      - timeframe=14
-      - limit=100
+      - timeframe={timeframe}
+      - limit=2
       
       CRITICAL: Return the complete list of stories as VALID JSON.
       Your response must be parseable JSON, not text description.
       Ensure the response contains the exact JSON structure returned by the MCP tool.
     agent: "story_fetcher"
-    expected_output: "Valid JSON data containing KONFLUX story issues - must be parseable as JSON"
+    expected_output: "Valid JSON data containing {project} story issues - must be parseable as JSON"
     output_file: "stories.json"
 
   tasks_task:
     description: |
-      Use list_jira_issues to get all TASK issues from KONFLUX project:
+      Use list_jira_issues to get all TASK issues from {project} project:
       
       Call list_jira_issues with:
-      - project='KONFLUX'
+      - project='{project}'
       - issue_type='3' (Task)
-      - timeframe=14
-      - limit=100
+      - timeframe={timeframe}
+      - limit=2
       
       CRITICAL: Return the complete list of tasks as VALID JSON.
       Your response must be parseable JSON, not text description.
       Ensure the response contains the exact JSON structure returned by the MCP tool.
     agent: "task_fetcher"
-    expected_output: "Valid JSON data containing KONFLUX task issues - must be parseable as JSON"
+    expected_output: "Valid JSON data containing {project} task issues - must be parseable as JSON"
     output_file: "tasks.json"
 
   epic_analysis_task:
@@ -124,72 +124,87 @@ tasks:
   # Epic Analysis Tasks
   get_epics_task:
     description: |
-      Use list_jira_issues to get all KONFLUX epics:
+      Use list_jira_issues to get all {project} epics:
       
       Call list_jira_issues with:
-      - project='KONFLUX'
+      - project='{project}'
       - issue_type='16' (Epic)
-      - limit=50
+      - limit=2
       - status='10018'
       
       CRITICAL: Return the complete list of epics with complete information as VALID JSON.
       Your response must be parseable JSON, not text description.
       Ensure the response contains the exact JSON structure returned by the MCP tool.
     agent: "comprehensive_epic_analyst"
-    expected_output: "Valid JSON data containing KONFLUX epics - must be parseable as JSON"
+    expected_output: "Valid JSON data containing {project} epics - must be parseable as JSON"
     output_file: "in_progress_epics.json"
 
-  # New tasks from crewai_konflux_dashboard.py
+  
   fetch_data_task:
     description: |
-      Use the available MCP JIRA Snowflake tools to fetch comprehensive KONFLUX project data:
+      CRITICAL: Your response must be ONLY valid JSON. No explanations, no markdown, no code blocks.
       
-      1. Call the list_jira_issues tool with project='KONFLUX' and limit=50 to get all KONFLUX issues
-      2. Call the list_jira_components tool with project='KONFLUX' and limit=50 to get KONFLUX components
-      3. Analyze and structure the data to extract key metrics:
-         - Total issues count by project
-         - Issues distribution by status (Open, Closed, In Progress, etc.)
-         - Issues distribution by priority (High, Medium, Low)
-         - Issues distribution by type (Bug, Story, Epic, Task, etc.)
-         - Recent activity patterns
-         - Component breakdown
-      4. Format the results as structured JSON data ready for dashboard visualization
-      5. Include real issue counts, not sample data
+      Call list_jira_issues with project='{project}', timeframe={timeframe}, limit=50
+      Then call list_jira_components with project='{project}', limit=50
+      
+      Return ONLY this JSON structure (replace with actual data):
+      {{
+        "project": "{project}",
+        "timeframe_days": {timeframe},
+        "total_issues": 0,
+        "issues_by_status": {{}},
+        "issues_by_priority": {{}},
+        "issues_by_type": {{}},
+        "components": []
+      }}
+      
+      FORBIDDEN:
+      - Any text before or after the JSON
+      - Markdown code blocks (```)
+      - Explanations or comments
+      - "Action:", "Thought:", or similar text
+      
+      Your entire response must be parseable by JSON.parse()
     agent: "jira_data_analyst"
-    expected_output: "Structured JSON data containing real KONFLUX metrics and issue details from JIRA Snowflake"
+    expected_output: "Raw JSON object starting with {{ and ending with }} - no other text"
 
   fetch_project_summary_task:
     description: |
-      Use the get_jira_project_summary tool to fetch comprehensive project statistics from JIRA Snowflake.
-      This will return data for all projects with their statuses and priorities breakdown.
-      After getting the result, filter the data to show only KONFLUX project information.
+      CRITICAL: Your response must be ONLY valid JSON. No explanations, no markdown, no code blocks.
       
-      The tool returns data in this format:
-      {
-          "total_issues": number,
-          "total_projects": number, 
-          "projects": {
-              "PROJECT_NAME": {
-                  "total_issues": number,
-                  "statuses": {"status": count},
-                  "priorities": {"priority": count}
-              }
-          }
-      }
+      1. Call get_jira_project_summary (no parameters)
+      2. Find the {project} project in the results
+      3. Return ONLY this JSON structure (replace with actual {project} data):
       
-      Extract only the KONFLUX project data and return it in a clean format.
+      {{
+        "project_name": "{project}",
+        "total_issues": 0,
+        "statuses": {{}},
+        "priorities": {{}}
+      }}
+      
+      FORBIDDEN:
+      - Any text before or after the JSON
+      - Markdown code blocks (```)
+      - Explanations or comments
+      - "Action:", "Thought:", or similar text
+      - Including data from other projects
+      
+      If {project} not found, return: {{"error": "{project} project not found"}}
+      
+      Your entire response must be parseable by JSON.parse()
     agent: "project_summary_analyst"
-    expected_output: "JSON data containing KONFLUX project summary with status and priority breakdowns"
+    expected_output: "Raw JSON object starting with {{ and ending with }} - no other text"
 
   generate_dashboard_task:
     description: |
-      Create a complete HTML dashboard using the real KONFLUX data, project summary, critical bug metrics, and blocker bug metrics.
+      Create a complete HTML dashboard using the real {project} data, project summary, critical bug metrics, and blocker bug metrics.
       
       IMPORTANT: Return ONLY the complete HTML code without any markdown formatting or code blocks.
       
       Requirements:
       1. Create a clean, enterprise-style layout inspired by modern analytics dashboards
-      2. Include a header with title "KONFLUX Impact Report" and current date
+      2. Include a header with title "{project} Impact Report" and current date
       3. Add a metrics summary section showing key statistics from project summary
       4. Add a dedicated Critical Bug Metrics tile/section with:
          - Total Critical Bugs
@@ -223,7 +238,7 @@ tasks:
       
       Do NOT wrap the HTML in markdown code blocks. Return the raw HTML only.
     agent: "dashboard_developer"
-    expected_output: "Complete HTML file content ready to be saved directly as konflux_real_dashboard.html"
+    expected_output: "Complete HTML file content ready to be saved directly as {project_lower}_real_dashboard.html"
     context: ["fetch_data_task", "critical_task", "blocker_task", "fetch_project_summary_task"]
 
   # Template tasks (for dynamic creation)
