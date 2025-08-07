@@ -9,7 +9,7 @@ tasks:
       - issue_type='1'
       - priority='1'
       - timeframe={timeframe}
-      - limit=2
+      - limit=100
       
       CRITICAL INSTRUCTIONS:
       1. Call list_jira_issues with the exact parameters above
@@ -31,7 +31,7 @@ tasks:
       - issue_type='1'
       - priority='2'
       - timeframe={timeframe}
-      - limit=2
+      - limit=100
       
       CRITICAL INSTRUCTIONS:
       1. Call list_jira_issues with the exact parameters above
@@ -51,7 +51,7 @@ tasks:
       - project='{project}'
       - issue_type='17' (Story)
       - timeframe={timeframe}
-      - limit=2
+      - limit=100
       
       CRITICAL: Return the complete list of stories as VALID JSON.
       Your response must be parseable JSON, not text description.
@@ -68,7 +68,7 @@ tasks:
       - project='{project}'
       - issue_type='3' (Task)
       - timeframe={timeframe}
-      - limit=2
+      - limit=100
       
       CRITICAL: Return the complete list of tasks as VALID JSON.
       Your response must be parseable JSON, not text description.
@@ -129,7 +129,7 @@ tasks:
       Call list_jira_issues with:
       - project='{project}'
       - issue_type='16' (Epic)
-      - limit=2
+      - limit=100
       - status='10018'
       
       CRITICAL: Return the complete list of epics with complete information as VALID JSON.
