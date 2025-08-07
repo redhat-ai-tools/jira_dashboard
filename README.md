@@ -62,20 +62,35 @@ python full_epic_activity_analysis.py
 #### `consolidated_konflux_summary.py`
 **Purpose**: Comprehensive analysis of critical and blocker bugs with epic summaries
 
+**Prerequisites**: 
+⚠️ **IMPORTANT**: Must run `full_epic_activity_analysis.py` first to generate the epic summaries file
+
 **What it does**:
 - Fetches critical (priority=2) and blocker (priority=1) bugs from a given time period
 - Analyzes each bug for problem details, resolution efforts, and current status
 - Extracts epic summaries from existing analysis files
 - Generates consolidated project status report
+- Analyzes stories and tasks with recent activity
 
 **Usage**:
 ```bash
+# Run epic analysis first (required dependency)
+python full_epic_activity_analysis.py
+
+# Then run consolidated summary
 python consolidated_konflux_summary.py
 ```
 
 **Output**: 
-- `konflux_bugs_analysis.txt` - Detailed bug analysis report
-- Various JSON files with raw bug data
+- `konflux_consolidated_summary.txt` - Epic progress summary only
+- `epic_summaries_only.txt` - Complete epic summaries for reference
+- `epic_progress_analysis.txt` - Standalone epic progress analysis
+- `konflux_bugs_analysis.txt` - Complete bugs analysis
+- `konflux_stories_tasks_analysis.txt` - Stories and tasks analysis
+- `blocker_bugs.json` - Raw blocker bug data
+- `critical_bugs.json` - Raw critical bug data
+- `stories.json` - Raw stories data
+- `tasks.json` - Raw tasks data
 
 
 ### 🏢 Dashboard Reports
@@ -87,11 +102,19 @@ python consolidated_konflux_summary.py
 - Fetches data across multiple JIRA issue types
 - Creates unified dashboard view of project status
 - Provides real-time insights into project health
+- Calculates critical and blocker bug metrics
+- Generates interactive HTML dashboard with charts
 
 **Usage**:
 ```bash
 python crewai_konflux_dashboard.py
 ```
+
+**Output**: 
+- `konflux_real_dashboard.html` - Interactive HTML dashboard
+- `konflux_project_summary.json` - Project summary data
+- `critical_bugs.json` - Critical bug metrics data
+- `blocker_bugs.json` - Blocker bug metrics data
 
 ## ⚙️ Configuration System
 
