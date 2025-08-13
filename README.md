@@ -18,25 +18,6 @@ A comprehensive JIRA reporting and analysis system powered by CrewAI agents and 
 - Access to JIRA MCP Snowflake server
 - Environment variables configured (see setup section)
 
-## 🚀 Quick Start
-
-```bash
-# 1. Set up environment
-export GEMINI_API_KEY="your_gemini_api_key"
-export SNOWFLAKE_TOKEN="your_snowflake_token"
-export SNOWFLAKE_URL="your_jira_mcp_url"
-
-# 2. Install dependencies
-pip install crewai crewai-tools pyyaml
-
-# 3. Run analysis for your project (replace YOUR_PROJECT with your JIRA project key and NUMBER_OF_DAYS with the number of days to look back for analysis )
-python full_epic_activity_analysis.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
-python consolidated_summary.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
-python crewai_dashboard.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
-```
-
-⚠️ **Important**: All scripts now require the `--project` parameter to specify which JIRA project to analyze.
-
 ## 🛠️ Setup & Configuration
 
 ### 1. Environment Variables
@@ -52,7 +33,7 @@ export SNOWFLAKE_URL="jira_mcp_snowflake_url_here"
 ### 2. Install Dependencies
 
 ```bash
-pip install crewai crewai-tools pyyaml
+pip install crewai crewai-tools crewai-tools[mcp] pyyaml
 ```
 
 ## 📊 Available Reports & Scripts
@@ -60,7 +41,7 @@ pip install crewai crewai-tools pyyaml
 ### 🔍 Epic Analysis Reports
 
 #### `full_epic_activity_analysis.py`
-**Purpose**: Analyzes epics with recent activity in related issues in a given time period
+**Purpose**: Analyzes epics in progress with recent activity in related issues in a given time period
 
 **What it does**:
 - Finds all project epics in progress
@@ -70,85 +51,64 @@ pip install crewai crewai-tools pyyaml
 
 **Usage**:
 ```bash
+# Single project
 python full_epic_activity_analysis.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
+
+# Multiple projects
+python full_epic_activity_analysis.py --project "PROJ1,PROJ2,PROJ3" --days NUMBER_OF_DAYS
 ```
 
 **Parameters**:
-- `--project` (required): JIRA project key to analyze (e.g., 'MYPROJ', 'TEAM')
+- `--project` (required): JIRA project key(s) to analyze - single project or comma-separated list (e.g., 'MYPROJ' or 'PROJ1,PROJ2,PROJ3')
 - `--days` (optional): Number of days to look back for analysis (default: 14)
 
-**Output**: 
-- `recently_updated_epics_summary.txt` - Detailed epic summaries
+**Output** (for each project): 
+- `{project}_recently_updated_epics_summary.txt` - Detailed epic summaries
 - `{project}_full_epic_activity_analysis.json` - Raw analysis data
 
 ---
 
-### 🐛 Bug Analysis Reports
+### 🔧 Individual Analysis Scripts
 
-#### `consolidated_summary.py`
-**Purpose**: Comprehensive analysis of critical and blocker bugs with epic summaries
-
-**Prerequisites**: 
-⚠️ **IMPORTANT**: Must run `full_epic_activity_analysis.py` first to generate the epic summaries file
-
-**What it does**:
-- Fetches critical (priority=2) and blocker (priority=1) bugs from a given time period
-- Analyzes each bug for problem details, resolution efforts, and current status
-- Extracts epic summaries from existing analysis files
-- Generates consolidated project status report
-- Analyzes stories and tasks with recent activity
+#### `bugs_analysis.py`
+**Purpose**: Dedicated critical/blocker bugs analysis
 
 **Usage**:
 ```bash
-# Run epic analysis first (required dependency)
-python full_epic_activity_analysis.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
+# Single project
+python bugs_analysis.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
 
-# Then run consolidated summary
-python consolidated_summary.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
+# Multiple projects
+python bugs_analysis.py --project "PROJ1,PROJ2,PROJ3" --days NUMBER_OF_DAYS
 ```
 
-**Parameters**:
-- `--project` (required): JIRA project key to analyze (e.g., 'MYPROJ', 'TEAM')
-- `--days` (optional): Number of days to look back for analysis (default: 14)
-
-**Output**: 
-- `{project}_consolidated_summary.txt` - Epic progress summary only
-- `epic_summaries_only.txt` - Complete epic summaries for reference
-- `epic_progress_analysis.txt` - Standalone epic progress analysis
-- `{project}_bugs_analysis.txt` - Complete bugs analysis
-- `{project}_stories_tasks_analysis.txt` - Stories and tasks analysis
-- `blocker_bugs.json` - Raw blocker bug data
-- `critical_bugs.json` - Raw critical bug data
-- `stories.json` - Raw stories data
-- `tasks.json` - Raw tasks data
-
-
-### 🏢 Dashboard Reports
-
-#### `crewai_dashboard.py`
-**Purpose**: Generates comprehensive project dashboard
-
-**What it does**:
-- Fetches data across multiple JIRA issue types
-- Creates unified dashboard view of project status
-- Provides real-time insights into project health
-- Calculates critical and blocker bug metrics
-- Generates interactive HTML dashboard with charts
+#### `stories_tasks_analysis.py`
+**Purpose**: Dedicated stories and tasks analysis
 
 **Usage**:
 ```bash
-python crewai_dashboard.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
+# Single project
+python stories_tasks_analysis.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
+
+# Multiple projects
+python stories_tasks_analysis.py --project "PROJ1,PROJ2,PROJ3" --days NUMBER_OF_DAYS
 ```
 
-**Parameters**:
-- `--project` (required): JIRA project key to analyze (e.g., 'MYPROJ', 'TEAM')
-- `--days` (optional): Number of days to look back for analysis (default: 14)
+#### `epic_summary_generator.py`
+**Purpose**: Dedicated epic progress analysis (requires epic summaries from full_epic_activity_analysis.py)
 
-**Output**: 
-- `{project}_real_dashboard.html` - Interactive HTML dashboard
-- `{project}_project_summary.json` - Project summary data
-- `critical_bugs.json` - Critical bug metrics data
-- `blocker_bugs.json` - Blocker bug metrics data
+**Usage**:
+```bash
+# Single project
+python epic_summary_generator.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
+
+# Multiple projects
+python epic_summary_generator.py --project "PROJ1,PROJ2,PROJ3" --days NUMBER_OF_DAYS
+```
+
+**Parameters** (for all individual scripts):
+- `--project` (required): JIRA project key(s) to analyze - single project or comma-separated list
+- `--days` (optional): Number of days to look back for analysis (default: 14)
 
 ## ⚙️ Configuration System
 
@@ -176,6 +136,7 @@ Utility functions including:
 - JSON extraction and data processing
 - Metrics calculation for items and bugs
 - Project-agnostic filtering and processing functions
+
 
 ## Adding New Tasks
 
@@ -236,8 +197,8 @@ your_task = create_task_from_config(
 ```
 
 **Available template variables:**
-- `{project}`: Project key 
-- `{project_lower}`: Lowercase project key   
+- `{project}`: Project key (e.g., "QEMETRICS")
+- `{project_lower}`: Lowercase project key (e.g., "qemetrics")  
 - `{timeframe}`: Analysis timeframe in days
 - Any custom variables you pass to `create_task_from_config()`
 
@@ -342,7 +303,7 @@ high_priority_task = create_task_from_config(
     "high_priority_bugs_task",
     tasks_config['tasks']['high_priority_bugs_task'],
     agents,
-    project="PROJ",
+    project="QEMETRICS",
     timeframe=14
 )
 
@@ -354,6 +315,8 @@ crew = Crew(
 )
 result = crew.kickoff()
 ```
+
+
 
 ## 🤝 Contributing to the Project
 
@@ -370,13 +333,15 @@ export SNOWFLAKE_TOKEN="your_token"
 export SNOWFLAKE_URL="your_snowflake_url"
 
 # Run epic analysis for your project
-python full_epic_activity_analysis.py --project MYPROJ --days 7
+python full_epic_activity_analysis.py --project MYPROJ --days NUMBER_OF_DAYS
 
-# Generate consolidated summary
-python consolidated_summary.py --project MYPROJ --days 7
+# Run individual analysis scripts as needed
+python bugs_analysis.py --project MYPROJ --days NUMBER_OF_DAYS
+python stories_tasks_analysis.py --project MYPROJ --days NUMBER_OF_DAYS
+python epic_summary_generator.py --project MYPROJ --days NUMBER_OF_DAYS
 
-# Create dashboard
-python crewai_dashboard.py --project MYPROJ --days 7
+# Create dashboard (requires additional setup - see dashboard section)
+python crewai_dashboard.py --project MYPROJ --days NUMBER_OF_DAYS
 ```
 
 ### Development Guidelines
