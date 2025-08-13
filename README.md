@@ -38,9 +38,7 @@ pip install crewai crewai-tools crewai-tools[mcp] pyyaml
 
 ## 📊 Available Reports & Scripts
 
-### 🔍 Epic Analysis Reports
-
-#### `full_epic_activity_analysis.py`
+### `full_epic_activity_analysis.py`
 **Purpose**: Analyzes epics in progress with recent activity in related issues in a given time period
 
 **What it does**:
@@ -68,9 +66,7 @@ python full_epic_activity_analysis.py --project "PROJ1,PROJ2,PROJ3" --days NUMBE
 
 ---
 
-### 🔧 Individual Analysis Scripts
-
-#### `bugs_analysis.py`
+### `bugs_analysis.py`
 **Purpose**: Dedicated critical/blocker bugs analysis
 
 **Usage**:
@@ -82,7 +78,7 @@ python bugs_analysis.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
 python bugs_analysis.py --project "PROJ1,PROJ2,PROJ3" --days NUMBER_OF_DAYS
 ```
 
-#### `stories_tasks_analysis.py`
+### `stories_tasks_analysis.py`
 **Purpose**: Dedicated stories and tasks analysis
 
 **Usage**:
@@ -94,7 +90,7 @@ python stories_tasks_analysis.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
 python stories_tasks_analysis.py --project "PROJ1,PROJ2,PROJ3" --days NUMBER_OF_DAYS
 ```
 
-#### `epic_summary_generator.py`
+### `epic_summary_generator.py`
 **Purpose**: Dedicated epic progress analysis (requires epic summaries from full_epic_activity_analysis.py)
 
 **Usage**:
