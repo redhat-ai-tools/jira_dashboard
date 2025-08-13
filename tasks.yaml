@@ -20,7 +20,7 @@ tasks:
       6. The response must be ONLY the JSON data returned by the MCP tool
     agent: "blocker_bug_fetcher"
     expected_output: "Raw JSON data from list_jira_issues tool with NO additional text - must be parseable as JSON"
-    output_file: "blocker_bugs.json"
+    output_file: "{project_lower}_blocker_bugs.json"
 
   critical_task:
     description: |
@@ -41,7 +41,7 @@ tasks:
       5. The response must be ONLY the JSON data returned by the MCP tool
     agent: "critical_bug_fetcher"
     expected_output: "Raw JSON data from list_jira_issues tool with NO additional text - must be parseable as JSON"
-    output_file: "critical_bugs.json"
+    output_file: "{project_lower}_critical_bugs.json"
 
   stories_task:
     description: |
@@ -58,7 +58,7 @@ tasks:
       Ensure the response contains the exact JSON structure returned by the MCP tool.
     agent: "story_fetcher"
     expected_output: "Valid JSON data containing {project} story issues - must be parseable as JSON"
-    output_file: "stories.json"
+    output_file: "{project_lower}_stories.json"
 
   tasks_task:
     description: |
@@ -75,7 +75,7 @@ tasks:
       Ensure the response contains the exact JSON structure returned by the MCP tool.
     agent: "task_fetcher"
     expected_output: "Valid JSON data containing {project} task issues - must be parseable as JSON"
-    output_file: "tasks.json"
+    output_file: "{project_lower}_tasks.json"
 
   epic_analysis_task:
     description: |
@@ -137,7 +137,7 @@ tasks:
       Ensure the response contains the exact JSON structure returned by the MCP tool.
     agent: "comprehensive_epic_analyst"
     expected_output: "Valid JSON data containing {project} epics - must be parseable as JSON"
-    output_file: "in_progress_epics.json"
+    output_file: "{project_lower}_in_progress_epics.json"
 
   
   fetch_data_task:
