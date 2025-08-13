@@ -45,26 +45,53 @@ server_params = {
 }
 
 
-
-
-
-def main(analysis_period_days=14, project=None):
+def main(analysis_period_days=14, projects=None):
     """Main analysis function
     
     Args:
         analysis_period_days (int): Number of days to look back for analysis (default: 14)
-        project (str): JIRA project key to analyze (required)
+        projects (list): List of JIRA project keys to analyze (required)
     """
-    if not project:
-        raise ValueError("Project parameter is required. Please specify a JIRA project key using --project.")
+    if not projects:
+        raise ValueError("Project parameter is required. Please specify JIRA project key(s) using --project.")
     
-    project = project.upper()  # Normalize to uppercase
-    print(f"🎯 {project} Epic Connected Issues Analysis (Last {analysis_period_days} Days)")
+    # Normalize to uppercase and remove duplicates while preserving order
+    projects = list(dict.fromkeys([p.upper() for p in projects]))
+    
+    print(f"🎯 Multi-Project Epic Connected Issues Analysis (Last {analysis_period_days} Days)")
     print("="*80)
-    print(f"📋 This will analyze all {project} epics and their connected issues")
+    print(f"📋 This will analyze epics and their connected issues from {len(projects)} project(s): {', '.join(projects)}")
     print("🔍 Looking for epics where connected issues were updated recently")
     print("📝 Will generate comprehensive summaries for active epics")
     print("="*80)
+    
+    # Process each project
+    for i, project in enumerate(projects, 1):
+        print(f"\n🔍 Processing project {i}/{len(projects)}: {project}")
+        print("=" * 60)
+        
+        try:
+            analyze_single_project(analysis_period_days, project)
+            print(f"✅ {project} analysis completed successfully")
+        except Exception as e:
+            print(f"❌ Error analyzing {project}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            print(f"⏭️  Continuing with next project...")
+    
+    print(f"\n🎉 Multi-project analysis complete! Processed {len(projects)} projects.")
+
+def analyze_single_project(analysis_period_days, project):
+    """Analyze epic activity for a single project
+    
+    Args:
+        analysis_period_days (int): Number of days to look back for analysis
+        project (str): JIRA project key to analyze
+    """
+    print(f"🎯 {project} Epic Connected Issues Analysis")
+    print(f"📋 Analyzing all {project} epics and their connected issues")
+    print("🔍 Looking for epics where connected issues were updated recently")
+    print("📝 Will generate comprehensive summaries for active epics")
     
     if not gemini_api_key:
         print("⚠️  Warning: GEMINI_API_KEY environment variable not set")
@@ -81,7 +108,7 @@ def main(analysis_period_days=14, project=None):
             tasks_config = load_tasks_config()
             
             # Task 1: Get all project epics
-            get_epics_task = create_task_from_config("get_epics_task", tasks_config['tasks']['get_epics_task'], agents, project=project)
+            get_epics_task = create_task_from_config("get_epics_task", tasks_config['tasks']['get_epics_task'], agents, project=project, project_lower=project.lower())
             
             # Create crew for epic discovery
             crew = Crew(
@@ -93,10 +120,26 @@ def main(analysis_period_days=14, project=None):
             print(f"📡 Phase 1: Fetching all {project} epics...")
             result = crew.kickoff()
             
+            # Debug: Print raw result
+            print(f"🐛 DEBUG: Raw crew result type: {type(result)}")
+            print(f"🐛 DEBUG: Raw crew result: {result}")
+            print(f"🐛 DEBUG: Result has tasks_output: {hasattr(result, 'tasks_output')}")
+            if hasattr(result, 'tasks_output'):
+                print(f"🐛 DEBUG: tasks_output length: {len(result.tasks_output)}")
+                if len(result.tasks_output) >= 1:
+                    print(f"🐛 DEBUG: First task output type: {type(result.tasks_output[0])}")
+                    print(f"🐛 DEBUG: First task output: {result.tasks_output[0]}")
+            
             # Extract epics data
             if hasattr(result, 'tasks_output') and len(result.tasks_output) >= 1:
                 epics_result = result.tasks_output[0]
+                print(f"🐛 DEBUG: About to extract JSON from epics_result")
+                print(f"🐛 DEBUG: epics_result type: {type(epics_result)}")
+                print(f"🐛 DEBUG: epics_result content: {epics_result}")
+                
                 epics_data = extract_json_from_result(epics_result)
+                print(f"🐛 DEBUG: Extracted epics_data type: {type(epics_data)}")
+                print(f"🐛 DEBUG: Extracted epics_data: {epics_data}")
                 
                 if epics_data and 'issues' in epics_data:
                     epics = epics_data['issues']
@@ -138,8 +181,13 @@ def main(analysis_period_days=14, project=None):
                             
                             links_result = links_crew.kickoff()
                             
+                            print(f"         🐛 DEBUG: Links result type: {type(links_result)}")
+                            print(f"         🐛 DEBUG: Links result: {links_result}")
+                            
                             if hasattr(links_result, 'tasks_output') and len(links_result.tasks_output) >= 1:
+                                print(f"         🐛 DEBUG: Links task output: {links_result.tasks_output[0]}")
                                 links_data = extract_json_from_result(links_result.tasks_output[0])
+                                print(f"         🐛 DEBUG: Extracted links_data: {links_data}")
                                 
                                 if links_data and 'links' in links_data:
                                     links = links_data['links']
@@ -187,13 +235,21 @@ def main(analysis_period_days=14, project=None):
                                                 
                                                 child_result = child_crew.kickoff()
                                                 
+                                                print(f"           🐛 DEBUG: Child result for {child_key}: {child_result}")
+                                                
                                                 if hasattr(child_result, 'tasks_output') and len(child_result.tasks_output) >= 1:
+                                                    print(f"           🐛 DEBUG: Child task output: {child_result.tasks_output[0]}")
                                                     child_data = extract_json_from_result(child_result.tasks_output[0])
+                                                    print(f"           🐛 DEBUG: Extracted child_data: {child_data}")
                                                     
                                                     if child_data:
                                                         child_updated = child_data.get('updated', '')
+                                                        print(f"           🐛 DEBUG: Child {child_key} updated timestamp: {child_updated}")
                                                         
-                                                        if is_timestamp_within_days(child_updated, analysis_period_days):
+                                                        is_recent = is_timestamp_within_days(child_updated, analysis_period_days)
+                                                        print(f"           🐛 DEBUG: Is {child_key} recent? {is_recent}")
+                                                        
+                                                        if is_recent:
                                                             recently_updated_children.append({
                                                                 'key': child_key,
                                                                 'summary': child['summary'],
@@ -361,7 +417,9 @@ def main(analysis_period_days=14, project=None):
                         if epic_summaries:
                             print(f"\n📄 Saving epic summaries to file...")
                             
-                            with open('recently_updated_epics_summary.txt', 'w', encoding='utf-8') as f:
+                            # Use project-specific filename
+                            epic_summaries_file = f'{project.lower()}_recently_updated_epics_summary.txt'
+                            with open(epic_summaries_file, 'w', encoding='utf-8') as f:
                                 f.write(f"{project} EPICS WITH RECENTLY UPDATED CONNECTED ISSUES\n")
                                 f.write("=" * 80 + "\n")
                                 f.write(f"Analysis Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
@@ -393,7 +451,7 @@ def main(analysis_period_days=14, project=None):
                                     f.write(summary['epic_level_summary'])
                                     f.write("\n\n" + "=" * 80 + "\n\n")
                             
-                            print(f"✅ Epic summaries saved to: recently_updated_epics_summary.txt")
+                            print(f"✅ Epic summaries saved to: {epic_summaries_file}")
                     
                     # Phase 4: Generate comprehensive report
                     print(f"\n" + "="*80)
@@ -451,18 +509,29 @@ def main(analysis_period_days=14, project=None):
                     
                 else:
                     print("❌ Could not extract epics data")
+                    print(f"🐛 DEBUG: epics_data is None or missing 'issues' key")
+                    print(f"🐛 DEBUG: epics_data: {epics_data}")
             else:
                 print("❌ Could not get epics")
+                print(f"🐛 DEBUG: Result structure issue - no tasks_output or empty")
                 
     except Exception as e:
         print(f"❌ Error: {str(e)}")
+        raise  # Re-raise to be handled by the multi-project loop
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Analyze project epic activity based on connected issues')
+    parser = argparse.ArgumentParser(description='Analyze epic activity based on connected issues for one or more projects')
     parser.add_argument('--days', '-d', type=int, default=14, 
                        help='Number of days to look back for analysis (default: 14)')
     parser.add_argument('--project', '-p', type=str, required=True,
-                       help='JIRA project key to analyze (required)')
+                       help='JIRA project key(s) to analyze - single project or comma-separated list (e.g., "PROJ1" or "PROJ1,PROJ2,PROJ3")')
     
     args = parser.parse_args()
-    main(analysis_period_days=args.days, project=args.project) 
+    
+    # Parse projects - handle both single and comma-separated
+    if ',' in args.project:
+        projects = [p.strip() for p in args.project.split(',') if p.strip()]
+    else:
+        projects = [args.project.strip()]
+    
+    main(analysis_period_days=args.days, projects=projects) 
