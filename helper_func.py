@@ -7,7 +7,7 @@ import os
 import json
 import re
 import yaml
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from crewai import Agent, Task
 
 
@@ -64,7 +64,11 @@ def create_task_from_config(task_name, config, agents_dict, **template_vars):
     
     # Add output_file if specified
     if 'output_file' in config:
-        task_kwargs['output_file'] = config['output_file']
+        output_file = config['output_file']
+        # Apply template substitution to output_file if template variables are provided
+        if template_vars and '{' in output_file and '}' in output_file:
+            output_file = output_file.format(**template_vars)
+        task_kwargs['output_file'] = output_file
     
     return Task(**task_kwargs)
 
@@ -125,18 +129,34 @@ def is_timestamp_within_days(timestamp, days=14):
         return False
     
     try:
-        # Handle JIRA timestamp format: "1753460716.477000000 1440"
+        # Normalize to datetime
+        dt = None
         if isinstance(timestamp, str):
-            timestamp_parts = timestamp.strip().split()
-            if timestamp_parts:
-                timestamp_str = timestamp_parts[0]
-                if '.' in timestamp_str:
-                    timestamp_float = float(timestamp_str)
+            ts = timestamp.strip()
+            # Try ISO 8601 first (e.g., 2025-08-07T14:16:52.866000+00:00 or 2025-08-07T14:16:52Z)
+            if ('T' in ts and '-' in ts) or (('-' in ts) and (':' in ts)):
+                try:
+                    ts_iso = ts.replace('Z', '+00:00')
+                    dt_parsed = datetime.fromisoformat(ts_iso)
+                    # Convert aware datetimes to naive UTC for comparison consistency
+                    if dt_parsed.tzinfo is not None:
+                        dt = dt_parsed.astimezone(timezone.utc).replace(tzinfo=None)
+                    else:
+                        dt = dt_parsed
+                except Exception:
+                    dt = None
+            # If not ISO 8601, try numeric epoch optionally followed by offset (e.g., "1753460716.477000000 1440")
+            if dt is None:
+                timestamp_parts = ts.split()
+                if timestamp_parts:
+                    timestamp_str = timestamp_parts[0]
+                    try:
+                        timestamp_float = float(timestamp_str)
+                        dt = datetime.fromtimestamp(timestamp_float)
+                    except Exception:
+                        return False
                 else:
-                    timestamp_float = float(timestamp_str)
-                dt = datetime.fromtimestamp(timestamp_float)
-            else:
-                return False
+                    return False
         elif isinstance(timestamp, (int, float)):
             dt = datetime.fromtimestamp(timestamp)
         else:
