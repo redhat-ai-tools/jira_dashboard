@@ -108,7 +108,13 @@ tasks:
           - What dependencies need to be resolved?
           - What resources or decisions are needed?
       
-                       Structure your response clearly with sections for:
+       CRITICAL OUTPUT INSTRUCTIONS:
+       - DO NOT include any "Thought:", "Action:", "Observation:" or similar thinking process text
+       - DO NOT include any reasoning or analysis steps in your response
+       - Your response must ONLY contain the final analysis content
+       - Start directly with the analysis content, no meta-commentary
+       
+       Structure your response clearly with sections for:
        - EPICS WITH SIGNIFICANT PROGRESS (list the epic keys and brief reason)
        - KEY ACHIEVEMENTS SUMMARY
        - PRIORITY NEXT STEPS
@@ -119,7 +125,7 @@ tasks:
        Focus on insights that would help leadership understand progress and make decisions.
        Be concise but comprehensive.
     agent: "epic_progress_analyzer"
-    expected_output: "Analysis of epic progress highlighting significant changes, achievements, and next steps"
+    expected_output: "Direct analysis of epic progress highlighting significant changes, achievements, and next steps with NO thinking process or meta-commentary"
 
   # Epic Analysis Tasks
   get_epics_task:
@@ -268,10 +274,16 @@ tasks:
         - CURRENT STATUS: Where does the resolution stand?
         - CHALLENGES: Any blockers or difficulties in resolution?
         
+        CRITICAL OUTPUT INSTRUCTIONS:
+        - DO NOT include any "Thought:", "Action:", "Observation:" or similar thinking process text
+        - DO NOT include any reasoning or analysis steps in your response
+        - Your response must ONLY contain the final summary content
+        - Start directly with the summary content, no meta-commentary
+        
         Focus on technical details, progress, and actionable insights.
         Keep the summary concise but informative.
       agent: "bug_analyzer"
-      expected_output: "Comprehensive analysis summary for {bug_key}"
+      expected_output: "Direct comprehensive analysis summary for {bug_key} with NO thinking process or meta-commentary"
 
     item_details_task:
       description: |
@@ -298,10 +310,16 @@ tasks:
         - CHALLENGES: Any blockers or difficulties encountered?
         - NEXT STEPS: What remains to be done?
         
+        CRITICAL OUTPUT INSTRUCTIONS:
+        - DO NOT include any "Thought:", "Action:", "Observation:" or similar thinking process text
+        - DO NOT include any reasoning or analysis steps in your response
+        - Your response must ONLY contain the final summary content
+        - Start directly with the summary content, no meta-commentary
+        
         Focus on technical details, business value, and actionable insights.
         Keep the summary concise but informative.
       agent: "story_task_analyzer"
-      expected_output: "Comprehensive analysis summary for {item_key}"
+      expected_output: "Direct comprehensive analysis summary for {item_key} with NO thinking process or meta-commentary"
 
     # Epic analysis templates
     epic_links_task:
@@ -353,10 +371,18 @@ tasks:
         - If you need to reference timing, use relative terms like "recently updated" instead of specific dates
         - Focus on the work content, not date details
         
+        CRITICAL OUTPUT INSTRUCTIONS:
+        - DO NOT include any "Thought:", "Action:", "Observation:" or similar thinking process text
+        - DO NOT include any reasoning or analysis steps in your response
+        - Your response must ONLY contain the final summary content
+        - Start directly with the summary content, no meta-commentary
+        - Focus on recent activity and what this issue contributes to the overall epic
+        - Keep the summary concise but informative
+        
         Focus on recent activity and what this issue contributes to the overall epic.
         Keep the summary concise but informative.
       agent: "connected_issues_analyzer"
-      expected_output: "Summary of recent activity and purpose for issue {child_key}"
+      expected_output: "Direct summary of recent activity and purpose for issue {child_key} with NO thinking process or meta-commentary"
 
     epic_synthesis_task:
       description: |
@@ -381,6 +407,65 @@ tasks:
         - The individual issue summaries above already contain properly formatted dates where needed
         - Focus on synthesizing the work content and progress, not date details
         
+        CRITICAL OUTPUT INSTRUCTIONS:
+        - DO NOT include any "Thought:", "Action:", "Observation:" or similar thinking process text
+        - DO NOT include any reasoning or analysis steps in your response
+        - Your response must ONLY contain the final epic summary content
+        - Start directly with the epic summary content, no meta-commentary
+        
         Synthesize insights from all the connected issues to provide a holistic view of this epic's recent activity and progress.
       agent: "connected_issues_analyzer"
-      expected_output: "Epic-level summary synthesized from recently updated connected issues" 
+      expected_output: "Direct epic-level summary synthesized from recently updated connected issues with NO thinking process or meta-commentary"
+
+    # BATCH TASK TEMPLATES (for improved performance)
+    batch_bug_details_task:
+      description: |
+        Use get_jira_issue_details to get comprehensive information for multiple bugs.
+        
+        Call get_jira_issue_details with:
+        - issue_keys={bug_keys}
+        
+        CRITICAL JSON OUTPUT INSTRUCTIONS:
+        - Return ONLY the raw JSON output from the MCP tool
+        - DO NOT add any explanations, thoughts, or additional text
+        - DO NOT add "Action:" or "Thought:" or any other text
+        - DO NOT include any reasoning or analysis steps
+        - Your response must be parseable JSON, not text description
+        - The response should contain the 'found_issues' dictionary with all bug details
+      agent: "{fetcher_agent}"
+      expected_output: "Raw JSON data from get_jira_issue_details tool with NO additional text - must be parseable as JSON"
+
+    batch_item_details_task:
+      description: |
+        Use get_jira_issue_details to get comprehensive information for multiple items (stories/tasks).
+        
+        Call get_jira_issue_details with:
+        - issue_keys={item_keys}
+        
+        CRITICAL JSON OUTPUT INSTRUCTIONS:
+        - Return ONLY the raw JSON output from the MCP tool
+        - DO NOT add any explanations, thoughts, or additional text
+        - DO NOT add "Action:" or "Thought:" or any other text
+        - DO NOT include any reasoning or analysis steps
+        - Your response must be parseable JSON, not text description
+        - The response should contain the 'found_issues' dictionary with all item details
+      agent: "{fetcher_agent}"
+      expected_output: "Raw JSON data from get_jira_issue_details tool with NO additional text - must be parseable as JSON"
+
+    batch_child_details_task:
+      description: |
+        Use get_jira_issue_details to get update information for multiple child issues.
+        
+        Call get_jira_issue_details with:
+        - issue_keys={child_keys}
+        
+        CRITICAL JSON OUTPUT INSTRUCTIONS:
+        - Return ONLY the raw JSON output from the MCP tool
+        - DO NOT add any explanations, thoughts, or additional text
+        - DO NOT add "Action:" or "Thought:" or any other text
+        - DO NOT include any reasoning or analysis steps
+        - Your response must be the exact JSON structure returned by the MCP tool
+        - Do not add any text description - only return parseable JSON
+        - The response should contain the 'found_issues' dictionary with all child issue details
+      agent: "comprehensive_epic_analyst"
+      expected_output: "Raw JSON data from get_jira_issue_details tool with NO additional text - must be parseable as JSON" 
