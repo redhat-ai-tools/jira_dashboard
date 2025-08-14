@@ -212,64 +212,131 @@ def analyze_single_project(analysis_period_days, project):
                                     if child_issues:
                                         recently_updated_children = []
                                         
-                                        # Check each child issue for recent updates
-                                        for j, child in enumerate(child_issues):
-                                            child_key = child['key']
+                                        # Collect all child keys for batch processing
+                                        child_keys = [child['key'] for child in child_issues]
+                                        print(f"         🚀 Batch checking {len(child_keys)} child issues for recent updates...")
+                                        
+                                        try:
+                                            # Use batch task to get all child details at once
+                                            batch_child_task = create_task_from_config(
+                                                "batch_child_details_task", 
+                                                tasks_config['tasks']['templates']['batch_child_details_task'], 
+                                                agents,
+                                                child_keys=child_keys
+                                            )
                                             
-                                            print(f"         📋 {j+1:2d}/{len(child_issues)} Checking {child_key}...", end="")
+                                            batch_child_crew = Crew(
+                                                agents=[agents['comprehensive_epic_analyst']],
+                                                tasks=[batch_child_task],
+                                                verbose=True
+                                            )
                                             
-                                            # Get child issue details
-                                            try:
-                                                child_details_task = create_task_from_config(
-                                                    "child_issue_details_task", 
-                                                    tasks_config['tasks']['templates']['child_issue_details_task'], 
-                                                    agents,
-                                                    child_key=child_key
-                                                )
+                                            batch_child_result = batch_child_crew.kickoff()
+                                            all_child_details = extract_json_from_result(batch_child_result.tasks_output[0])
+                                            
+                                            print(f"         ✅ Batch check completed! Processing results...")
+                                            
+                                            # Process batch results to find recently updated children
+                                            no_data_count = 0
+                                            for j, child in enumerate(child_issues):
+                                                child_key = child['key']
+                                                print(f"         📋 {j+1:2d}/{len(child_issues)} Checking {child_key}...", end="")
                                                 
-                                                child_crew = Crew(
-                                                    agents=[agents['comprehensive_epic_analyst']],
-                                                    tasks=[child_details_task],
-                                                    verbose=True
-                                                )
+                                                # Get the details from batch result
+                                                child_data = None
+                                                if all_child_details and 'found_issues' in all_child_details:
+                                                    child_data = all_child_details['found_issues'].get(child_key)
                                                 
-                                                child_result = child_crew.kickoff()
-                                                
-                                                print(f"           🐛 DEBUG: Child result for {child_key}: {child_result}")
-                                                
-                                                if hasattr(child_result, 'tasks_output') and len(child_result.tasks_output) >= 1:
-                                                    print(f"           🐛 DEBUG: Child task output: {child_result.tasks_output[0]}")
-                                                    child_data = extract_json_from_result(child_result.tasks_output[0])
-                                                    print(f"           🐛 DEBUG: Extracted child_data: {child_data}")
+                                                if child_data:
+                                                    child_updated = child_data.get('updated', '')
+                                                    is_recent = is_timestamp_within_days(child_updated, analysis_period_days)
                                                     
-                                                    if child_data:
-                                                        child_updated = child_data.get('updated', '')
-                                                        print(f"           🐛 DEBUG: Child {child_key} updated timestamp: {child_updated}")
-                                                        
-                                                        is_recent = is_timestamp_within_days(child_updated, analysis_period_days)
-                                                        print(f"           🐛 DEBUG: Is {child_key} recent? {is_recent}")
-                                                        
-                                                        if is_recent:
-                                                            recently_updated_children.append({
-                                                                'key': child_key,
-                                                                'summary': child['summary'],
-                                                                'link_type': child['link_type'],
-                                                                'updated': child_updated,
-                                                                'updated_formatted': format_timestamp(child_updated)
-                                                            })
-                                                            print(" ✅ Recently updated!")
-                                                        else:
-                                                            print(" ⏳ Not recent")
+                                                    if is_recent:
+                                                        recently_updated_children.append({
+                                                            'key': child_key,
+                                                            'summary': child['summary'],
+                                                            'link_type': child['link_type'],
+                                                            'updated': child_updated,
+                                                            'updated_formatted': format_timestamp(child_updated)
+                                                        })
+                                                        print(" ✅ Recently updated!")
                                                     else:
-                                                        print(" ❌ No data")
-                                                        print(f"           🐛 DEBUG: child_data type: {type(child_data)}")
-                                                        print(f"           🐛 DEBUG: child_data content: {child_data}")
-                                                        print(f"           🐛 DEBUG: Raw child result: {child_result.tasks_output[0] if hasattr(child_result, 'tasks_output') and child_result.tasks_output else 'No task output'}")
+                                                        print(" ⏳ Not recent")
                                                 else:
-                                                    print(" ❌ Failed")
+                                                    print(" ❌ No data")
+                                                    no_data_count += 1
+                                            
+                                            # DEBUG: Only show detailed debugging if most/all issues returned no data
+                                            if no_data_count == len(child_issues) and len(child_issues) > 0:
+                                                print(f"         🐛 DEBUG: All {len(child_issues)} issues returned no data - investigating...")
+                                                print(f"         🐛 DEBUG: Requested keys: {child_keys}")
+                                                print(f"         🐛 DEBUG: Raw batch result type: {type(batch_child_result.tasks_output[0])}")
+                                                raw_result = str(batch_child_result.tasks_output[0])
+                                                print(f"         🐛 DEBUG: Raw batch result (first 500 chars): {raw_result[:500]}...")
+                                                print(f"         🐛 DEBUG: Parsed result type: {type(all_child_details)}")
+                                                print(f"         🐛 DEBUG: Parsed result keys: {list(all_child_details.keys()) if isinstance(all_child_details, dict) else 'Not a dict'}")
+                                                if isinstance(all_child_details, dict) and 'found_issues' in all_child_details:
+                                                    found_keys = list(all_child_details['found_issues'].keys())
+                                                    print(f"         🐛 DEBUG: Found {len(found_keys)} issues in batch result: {found_keys}")
+                                                    if 'not_found' in all_child_details:
+                                                        print(f"         🐛 DEBUG: Not found issues: {all_child_details['not_found']}")
+                                                else:
+                                                    print(f"         🐛 DEBUG: No 'found_issues' key in batch result")
+                                                    print(f"         🐛 DEBUG: Full parsed result: {str(all_child_details)[:800]}...")
+                                            elif no_data_count > len(child_issues) // 2:
+                                                print(f"         🐛 DEBUG: {no_data_count}/{len(child_issues)} issues returned no data - this may indicate a problem")
                                                     
-                                            except Exception as e:
-                                                print(f" ❌ Error: {str(e)[:30]}...")
+                                        except Exception as e:
+                                            print(f"         ❌ Batch check failed: {str(e)}")
+                                            print("         🔄 Falling back to individual calls...")
+                                            
+                                            # Fallback to individual calls if batch fails
+                                            for j, child in enumerate(child_issues):
+                                                child_key = child['key']
+                                                print(f"         📋 {j+1:2d}/{len(child_issues)} Checking {child_key} (fallback)...", end="")
+                                                
+                                                # Get child issue details
+                                                try:
+                                                    child_details_task = create_task_from_config(
+                                                        "child_issue_details_task", 
+                                                        tasks_config['tasks']['templates']['child_issue_details_task'], 
+                                                        agents,
+                                                        child_key=child_key
+                                                    )
+                                                    
+                                                    child_crew = Crew(
+                                                        agents=[agents['comprehensive_epic_analyst']],
+                                                        tasks=[child_details_task],
+                                                        verbose=True
+                                                    )
+                                                    
+                                                    child_result = child_crew.kickoff()
+                                                    
+                                                    if hasattr(child_result, 'tasks_output') and len(child_result.tasks_output) >= 1:
+                                                        child_data = extract_json_from_result(child_result.tasks_output[0])
+                                                        
+                                                        if child_data:
+                                                            child_updated = child_data.get('updated', '')
+                                                            is_recent = is_timestamp_within_days(child_updated, analysis_period_days)
+                                                            
+                                                            if is_recent:
+                                                                recently_updated_children.append({
+                                                                    'key': child_key,
+                                                                    'summary': child['summary'],
+                                                                    'link_type': child['link_type'],
+                                                                    'updated': child_updated,
+                                                                    'updated_formatted': format_timestamp(child_updated)
+                                                                })
+                                                                print(" ✅ Recently updated!")
+                                                            else:
+                                                                print(" ⏳ Not recent")
+                                                        else:
+                                                            print(" ❌ No data")
+                                                    else:
+                                                        print(" ❌ Failed")
+                                                        
+                                                except Exception as e:
+                                                    print(f" ❌ Error: {str(e)[:30]}...")
                                         
                                         # If any children were recently updated, add this epic to active list
                                         if recently_updated_children:
@@ -313,49 +380,167 @@ def analyze_single_project(analysis_period_days, project):
                             
                             issue_summaries = []
                             
-                            # Analyze each recently updated connected issue
-                            for j, child in enumerate(epic['recently_updated_children'], 1):
-                                child_key = child['key']
-                                print(f"     🔍 {j:2d}/{len(epic['recently_updated_children'])} Analyzing {child_key}...", end="")
+                            # Batch analyze recently updated connected issues
+                            child_keys_for_analysis = [child['key'] for child in epic['recently_updated_children']]
+                            print(f"     🚀 Batch analyzing {len(child_keys_for_analysis)} recently updated issues...")
+                            
+                            try:
+                                # Use batch task to get all issue details at once for content analysis
+                                batch_analysis_task = create_task_from_config(
+                                    "batch_item_details_task",  # Reuse the batch item details task
+                                    tasks_config['tasks']['templates']['batch_item_details_task'],
+                                    agents,
+                                    item_keys=child_keys_for_analysis,
+                                    fetcher_agent='connected_issues_analyzer'
+                                )
                                 
-                                try:
-                                    # Get detailed issue information and create summary
-                                    issue_analysis_task = create_task_from_config(
-                                        "issue_content_analysis_task",
-                                        tasks_config['tasks']['templates']['issue_content_analysis_task'],
-                                        agents,
-                                        child_key=child_key,
-                                        updated_formatted=child['updated_formatted']
-                                    )
+                                batch_analysis_crew = Crew(
+                                    agents=[agents['connected_issues_analyzer']],
+                                    tasks=[batch_analysis_task],
+                                    verbose=True
+                                )
+                                
+                                batch_analysis_result = batch_analysis_crew.kickoff()
+                                all_issue_details_for_analysis = extract_json_from_result(batch_analysis_result.tasks_output[0])
+                                
+                                print(f"     ✅ Batch details fetch completed! Processing individual analyses...")
+                                
+                                # Now process each issue individually for content analysis
+                                analysis_no_data_count = 0
+                                for j, child in enumerate(epic['recently_updated_children'], 1):
+                                    child_key = child['key']
+                                    print(f"     🔍 {j:2d}/{len(epic['recently_updated_children'])} Analyzing {child_key}...", end="")
                                     
-                                    issue_crew = Crew(
-                                        agents=[agents['connected_issues_analyzer']],
-                                        tasks=[issue_analysis_task],
-                                        verbose=True
-                                    )
-                                    
-                                    issue_result = issue_crew.kickoff()
-                                    
-                                    if hasattr(issue_result, 'tasks_output') and len(issue_result.tasks_output) >= 1:
-                                        issue_summary = str(issue_result.tasks_output[0])
+                                    try:
+                                        # Get the detailed issue information from batch result
+                                        issue_details = None
+                                        if all_issue_details_for_analysis and 'found_issues' in all_issue_details_for_analysis:
+                                            issue_details = all_issue_details_for_analysis['found_issues'].get(child_key)
                                         
-                                        # Post-process to format any raw timestamps
-                                        issue_summary_formatted = post_process_summary_timestamps(issue_summary)
-                                        
-                                        issue_summaries.append({
-                                            'issue_key': child_key,
-                                            'issue_title': child['summary'],
-                                            'link_type': child['link_type'],
-                                            'updated_formatted': child['updated_formatted'],
-                                            'detailed_summary': issue_summary_formatted
-                                        })
-                                        
-                                        print(f" ✅ Done ({len(issue_summary)} chars)")
+                                        if issue_details:
+                                            # Create analysis based on the detailed information
+                                            # Use enhanced inline analysis with full information
+                                            issue_summary = f"Issue {child_key} ({child['link_type']}) was recently updated. "
+                                            
+                                            # Add key details from the issue
+                                            if issue_details.get('summary'):
+                                                issue_summary += f"Summary: {issue_details['summary']}. "
+                                            if issue_details.get('status'):
+                                                issue_summary += f"Status: {issue_details['status']}. "
+                                            if issue_details.get('description'):
+                                                # Include full description instead of truncating
+                                                desc = issue_details['description']
+                                                # Only truncate if extremely long (>1000 chars)
+                                                if len(desc) > 1000:
+                                                    desc = desc[:1000] + "..."
+                                                issue_summary += f"Description: {desc}. " if desc.strip() else ""
+                                            
+                                            # Add additional context if available
+                                            if issue_details.get('priority'):
+                                                issue_summary += f"Priority: {issue_details['priority']}. "
+                                            if issue_details.get('resolution'):
+                                                issue_summary += f"Resolution: {issue_details['resolution']}. "
+                                            
+                                            # Add comments for recent activity (IMPORTANT!)
+                                            if issue_details.get('comments'):
+                                                comments = issue_details.get('comments', [])
+                                                if comments:
+                                                    issue_summary += "Recent comments: "
+                                                    # Include the most recent comments (last 3)
+                                                    recent_comments = comments[-3:] if len(comments) > 3 else comments
+                                                    for comment in recent_comments:
+                                                        comment_body = comment.get('body', '').strip()
+                                                        if comment_body:
+                                                            # Truncate very long comments
+                                                            if len(comment_body) > 500:
+                                                                comment_body = comment_body[:500] + "..."
+                                                            issue_summary += f"[{comment_body}] "
+                                                    issue_summary += ". "
+                                            
+                                            # Post-process to format any raw timestamps
+                                            issue_summary_formatted = post_process_summary_timestamps(issue_summary)
+                                            
+                                            issue_summaries.append({
+                                                'issue_key': child_key,
+                                                'issue_title': child['summary'],
+                                                'link_type': child['link_type'],
+                                                'updated_formatted': child['updated_formatted'],
+                                                'detailed_summary': issue_summary_formatted
+                                            })
+                                            
+                                            print(f" ✅ Done ({len(issue_summary)} chars)")
+                                        else:
+                                            print(f" ❌ No details")
+                                            analysis_no_data_count += 1
+                                            
+                                    except Exception as e:
+                                        print(f" ❌ Error: {str(e)[:30]}...")
+                                        analysis_no_data_count += 1
+                                
+                                # DEBUG: Only show detailed debugging if most/all analysis requests returned no data
+                                if analysis_no_data_count == len(child_keys_for_analysis) and len(child_keys_for_analysis) > 0:
+                                    print(f"     🐛 DEBUG: All {len(child_keys_for_analysis)} analysis requests returned no data - investigating...")
+                                    print(f"     🐛 DEBUG: Requested analysis keys: {child_keys_for_analysis}")
+                                    print(f"     🐛 DEBUG: Raw analysis result (first 500 chars): {str(batch_analysis_result.tasks_output[0])[:500]}...")
+                                    print(f"     🐛 DEBUG: Parsed analysis result type: {type(all_issue_details_for_analysis)}")
+                                    if isinstance(all_issue_details_for_analysis, dict) and 'found_issues' in all_issue_details_for_analysis:
+                                        found_keys = list(all_issue_details_for_analysis['found_issues'].keys())
+                                        print(f"     🐛 DEBUG: Found {len(found_keys)} issues for analysis: {found_keys}")
+                                        if 'not_found' in all_issue_details_for_analysis:
+                                            print(f"     🐛 DEBUG: Not found for analysis: {all_issue_details_for_analysis['not_found']}")
                                     else:
-                                        print(f" ❌ Failed")
+                                        print(f"     🐛 DEBUG: No 'found_issues' key in analysis result")
+                                        print(f"     🐛 DEBUG: Full analysis result: {str(all_issue_details_for_analysis)[:800]}...")
+                                elif analysis_no_data_count > len(child_keys_for_analysis) // 2:
+                                    print(f"     🐛 DEBUG: {analysis_no_data_count}/{len(child_keys_for_analysis)} analysis requests returned no data - this may indicate a problem")
                                         
-                                except Exception as e:
-                                    print(f" ❌ Error: {str(e)[:30]}...")
+                            except Exception as e:
+                                print(f"     ❌ Batch analysis failed: {str(e)}")
+                                print("     🔄 Falling back to individual calls...")
+                                
+                                # Fallback to individual calls if batch fails
+                                for j, child in enumerate(epic['recently_updated_children'], 1):
+                                    child_key = child['key']
+                                    print(f"     🔍 {j:2d}/{len(epic['recently_updated_children'])} Analyzing {child_key} (fallback)...", end="")
+                                    
+                                    try:
+                                        # Get detailed issue information and create summary
+                                        issue_analysis_task = create_task_from_config(
+                                            "issue_content_analysis_task",
+                                            tasks_config['tasks']['templates']['issue_content_analysis_task'],
+                                            agents,
+                                            child_key=child_key,
+                                            updated_formatted=child['updated_formatted']
+                                        )
+                                        
+                                        issue_crew = Crew(
+                                            agents=[agents['connected_issues_analyzer']],
+                                            tasks=[issue_analysis_task],
+                                            verbose=True
+                                        )
+                                        
+                                        issue_result = issue_crew.kickoff()
+                                        
+                                        if hasattr(issue_result, 'tasks_output') and len(issue_result.tasks_output) >= 1:
+                                            issue_summary = str(issue_result.tasks_output[0])
+                                            
+                                            # Post-process to format any raw timestamps
+                                            issue_summary_formatted = post_process_summary_timestamps(issue_summary)
+                                            
+                                            issue_summaries.append({
+                                                'issue_key': child_key,
+                                                'issue_title': child['summary'],
+                                                'link_type': child['link_type'],
+                                                'updated_formatted': child['updated_formatted'],
+                                                'detailed_summary': issue_summary_formatted
+                                            })
+                                            
+                                            print(f" ✅ Done ({len(issue_summary)} chars)")
+                                        else:
+                                            print(f" ❌ Failed")
+                                            
+                                    except Exception as e:
+                                        print(f" ❌ Error: {str(e)[:30]}...")
                             
                             # Now create epic-level summary based on the issue summaries
                             if issue_summaries:
