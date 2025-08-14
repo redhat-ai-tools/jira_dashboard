@@ -178,84 +178,173 @@ def analyze_single_project(analysis_period_days, project):
             print(f"\n🤖 Step 2: Generating detailed LLM analysis for bugs with recent activity...")
             bug_analyses = []
             
-            for i, bug in enumerate(recent_activity_bugs, 1):
-                bug_key = bug.get('key', 'Unknown')
-                print(f"   📋 {i}/{len(recent_activity_bugs)} Analyzing {bug_key}...", end="")
-               
+            if recent_activity_bugs:
+                # Collect all bug keys for batch processing
+                bug_keys = [bug.get('key', 'Unknown') for bug in recent_activity_bugs]
+                print(f"   🚀 Batch fetching details for {len(bug_keys)} bugs...")
+                
                 try:
-                    # Determine which fetcher to use based on bug priority
-                    bug_priority = bug.get('priority', '')
-                    if bug_priority == '1':  # Blocker bugs
-                        fetcher_agent_name = 'blocker_bug_fetcher'
-                    elif bug_priority == '2':  # Critical bugs  
-                        fetcher_agent_name = 'critical_bug_fetcher'
-                    else:
-                        # For other priorities, use blocker fetcher as fallback
-                        fetcher_agent_name = 'blocker_bug_fetcher'
-                    
-                    bug_details_task = create_task_from_config(
-                        "bug_details_task", 
-                        tasks_config['tasks']['templates']['bug_details_task'], 
+                    # Use batch task to get all bug details at once
+                    batch_details_task = create_task_from_config(
+                        "batch_bug_details_task", 
+                        tasks_config['tasks']['templates']['batch_bug_details_task'], 
                         agents,
-                        bug_key=bug_key,
-                        fetcher_agent=fetcher_agent_name
+                        bug_keys=bug_keys,
+                        fetcher_agent='blocker_bug_fetcher'  # Use one agent for batch call
                     )
                     
-                    details_crew = Crew(
-                        agents=[agents[fetcher_agent_name]],
-                        tasks=[bug_details_task],
+                    batch_crew = Crew(
+                        agents=[agents['blocker_bug_fetcher']],
+                        tasks=[batch_details_task],
                         verbose=True
                     )
                     
-                    details_result = details_crew.kickoff()
-                    bug_details = extract_json_from_result(details_result.tasks_output[0])
+                    batch_result = batch_crew.kickoff()
+                    all_bug_details = extract_json_from_result(batch_result.tasks_output[0])
                     
-                    # Generate analysis summary
-                    bug_summary = "No summary available - failed to fetch details"
-                    if bug_details and not bug_details.get('error'):
-                        analysis_task = create_task_from_config(
-                            "bug_analysis_task",
-                            tasks_config['tasks']['templates']['bug_analysis_task'],
-                            agents,
-                            bug_details=json.dumps(bug_details, indent=2),
-                            bug_key=bug_key
-                        )
-                        
-                        analysis_crew = Crew(
-                            agents=[agents['bug_analyzer']],
-                            tasks=[analysis_task],
-                            verbose=True
-                        )
-                        
-                        analysis_result = analysis_crew.kickoff()
-                        bug_summary = str(analysis_result.tasks_output[0]).strip()
+                    print(f"   ✅ Batch fetch completed! Processing individual analyses...")
                     
-                    # Determine severity label from priority  
-                    priority = bug.get('priority', 'Unknown')
-                    if priority == '1':
-                        severity_label = 'BLOCKER'
-                    elif priority == '2':
-                        severity_label = 'CRITICAL'
-                    else:
-                        severity_label = f'Priority {priority}'
-                    
-                    bug_analyses.append({
-                        'key': bug_key,
-                        'summary': bug.get('summary', 'No summary'),
-                        'priority': severity_label,
-                        'status': bug.get('status', 'Unknown'),
-                        'created': format_timestamp(bug.get('created', '')),
-                        'updated': format_timestamp(bug.get('updated', '')),
-                        'resolution_date': format_timestamp(bug.get('resolution_date', '')),
-                        'analysis': bug_summary
-                    })
-                    
-                    print(" ✅ Done")
-                    
+                    # Now process each bug individually for analysis
+                    for i, bug in enumerate(recent_activity_bugs, 1):
+                        bug_key = bug.get('key', 'Unknown')
+                        print(f"   📋 {i}/{len(recent_activity_bugs)} Analyzing {bug_key}...", end="")
+                       
+                        try:
+                            # Get the details from batch result
+                            bug_details = None
+                            if all_bug_details and 'found_issues' in all_bug_details:
+                                bug_details = all_bug_details['found_issues'].get(bug_key)
+                            
+                            # Generate analysis summary
+                            bug_summary = "No summary available - failed to fetch details"
+                            if bug_details and not bug_details.get('error'):
+                                analysis_task = create_task_from_config(
+                                    "bug_analysis_task",
+                                    tasks_config['tasks']['templates']['bug_analysis_task'],
+                                    agents,
+                                    bug_details=json.dumps(bug_details, indent=2),
+                                    bug_key=bug_key
+                                )
+                                
+                                analysis_crew = Crew(
+                                    agents=[agents['bug_analyzer']],
+                                    tasks=[analysis_task],
+                                    verbose=True
+                                )
+                                
+                                analysis_result = analysis_crew.kickoff()
+                                bug_summary = str(analysis_result.tasks_output[0]).strip()
+                            
+                            # Determine severity label from priority  
+                            priority = bug.get('priority', 'Unknown')
+                            if priority == '1':
+                                severity_label = 'BLOCKER'
+                            elif priority == '2':
+                                severity_label = 'CRITICAL'
+                            else:
+                                severity_label = f'Priority {priority}'
+                            
+                            bug_analyses.append({
+                                'key': bug_key,
+                                'summary': bug.get('summary', 'No summary'),
+                                'priority': severity_label,
+                                'status': bug.get('status', 'Unknown'),
+                                'created': format_timestamp(bug.get('created', '')),
+                                'updated': format_timestamp(bug.get('updated', '')),
+                                'resolution_date': format_timestamp(bug.get('resolution_date', '')),
+                                'analysis': bug_summary
+                            })
+                            
+                            print(" ✅ Done")
+                            
+                        except Exception as e:
+                            print(f" ❌ Error: {str(e)}")
+                            import traceback
+                            print(f"   🐛 Debug traceback: {traceback.format_exc()}")
+                            
                 except Exception as e:
-                    print(f" ❌ Error: {str(e)}")
-                    import traceback
-                    print(f"   🐛 Debug traceback: {traceback.format_exc()}")
+                    print(f"   ❌ Batch fetch failed: {str(e)}")
+                    print("   🔄 Falling back to individual calls...")
+                    
+                    # Fallback to individual calls if batch fails
+                    for i, bug in enumerate(recent_activity_bugs, 1):
+                        bug_key = bug.get('key', 'Unknown')
+                        print(f"   📋 {i}/{len(recent_activity_bugs)} Analyzing {bug_key} (fallback)...", end="")
+                       
+                        try:
+                            # Determine which fetcher to use based on bug priority
+                            bug_priority = bug.get('priority', '')
+                            if bug_priority == '1':  # Blocker bugs
+                                fetcher_agent_name = 'blocker_bug_fetcher'
+                            elif bug_priority == '2':  # Critical bugs  
+                                fetcher_agent_name = 'critical_bug_fetcher'
+                            else:
+                                # For other priorities, use blocker fetcher as fallback
+                                fetcher_agent_name = 'blocker_bug_fetcher'
+                            
+                            bug_details_task = create_task_from_config(
+                                "bug_details_task", 
+                                tasks_config['tasks']['templates']['bug_details_task'], 
+                                agents,
+                                bug_key=bug_key,
+                                fetcher_agent=fetcher_agent_name
+                            )
+                            
+                            details_crew = Crew(
+                                agents=[agents[fetcher_agent_name]],
+                                tasks=[bug_details_task],
+                                verbose=True
+                            )
+                            
+                            details_result = details_crew.kickoff()
+                            bug_details = extract_json_from_result(details_result.tasks_output[0])
+                            
+                            # Generate analysis summary
+                            bug_summary = "No summary available - failed to fetch details"
+                            if bug_details and not bug_details.get('error'):
+                                analysis_task = create_task_from_config(
+                                    "bug_analysis_task",
+                                    tasks_config['tasks']['templates']['bug_analysis_task'],
+                                    agents,
+                                    bug_details=json.dumps(bug_details, indent=2),
+                                    bug_key=bug_key
+                                )
+                                
+                                analysis_crew = Crew(
+                                    agents=[agents['bug_analyzer']],
+                                    tasks=[analysis_task],
+                                    verbose=True
+                                )
+                                
+                                analysis_result = analysis_crew.kickoff()
+                                bug_summary = str(analysis_result.tasks_output[0]).strip()
+                            
+                            # Determine severity label from priority  
+                            priority = bug.get('priority', 'Unknown')
+                            if priority == '1':
+                                severity_label = 'BLOCKER'
+                            elif priority == '2':
+                                severity_label = 'CRITICAL'
+                            else:
+                                severity_label = f'Priority {priority}'
+                            
+                            bug_analyses.append({
+                                'key': bug_key,
+                                'summary': bug.get('summary', 'No summary'),
+                                'priority': severity_label,
+                                'status': bug.get('status', 'Unknown'),
+                                'created': format_timestamp(bug.get('created', '')),
+                                'updated': format_timestamp(bug.get('updated', '')),
+                                'resolution_date': format_timestamp(bug.get('resolution_date', '')),
+                                'analysis': bug_summary
+                            })
+                            
+                            print(" ✅ Done")
+                            
+                        except Exception as e:
+                            print(f" ❌ Error: {str(e)}")
+                            import traceback
+                            print(f"   🐛 Debug traceback: {traceback.format_exc()}")
             
             # Step 3: Generate bugs analysis file
             print(f"\n📄 Step 3: Generating bugs analysis file...")
