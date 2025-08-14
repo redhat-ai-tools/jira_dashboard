@@ -227,79 +227,161 @@ def analyze_single_project(analysis_period_days, project):
             if len(recent_stories_tasks) > 0:
                 print(f"   📊 Analyzing {len(recent_stories_tasks)} stories/tasks with LLM...")
                 
-                for i, item in enumerate(recent_stories_tasks, 1):
-                    item_key = item.get('key', 'Unknown')
-                    item_type = item.get('item_type', 'Unknown')
-                    print(f"   📋 {i}/{len(recent_stories_tasks)} Analyzing {item_key} ({item_type})...", end="")
-                   
-                    try:
-                        # Get detailed item information
-                        # Use appropriate fetcher based on item type
-                        if item_type == 'STORY':
-                            fetcher_agent_name = 'story_fetcher'
-                        elif item_type == 'TASK':
-                            fetcher_agent_name = 'task_fetcher'
-                        else:
-                            # Fallback for other types - use story fetcher as it's more general
-                            fetcher_agent_name = 'story_fetcher'
+                # Collect all item keys for batch processing
+                item_keys = [item.get('key', 'Unknown') for item in recent_stories_tasks]
+                print(f"   🚀 Batch fetching details for {len(item_keys)} stories/tasks...")
+                
+                try:
+                    # Use batch task to get all item details at once
+                    batch_details_task = create_task_from_config(
+                        "batch_item_details_task", 
+                        tasks_config['tasks']['templates']['batch_item_details_task'], 
+                        agents,
+                        item_keys=item_keys,
+                        fetcher_agent='story_fetcher'  # Use one agent for batch call
+                    )
+                    
+                    batch_crew = Crew(
+                        agents=[agents['story_fetcher']],
+                        tasks=[batch_details_task],
+                        verbose=True
+                    )
+                    
+                    batch_result = batch_crew.kickoff()
+                    all_item_details = extract_json_from_result(batch_result.tasks_output[0])
+                    
+                    print(f"   ✅ Batch fetch completed! Processing individual analyses...")
+                    
+                    # Now process each item individually for analysis
+                    for i, item in enumerate(recent_stories_tasks, 1):
+                        item_key = item.get('key', 'Unknown')
+                        item_type = item.get('item_type', 'Unknown')
+                        print(f"   📋 {i}/{len(recent_stories_tasks)} Analyzing {item_key} ({item_type})...", end="")
+                       
+                        try:
+                            # Get the details from batch result
+                            item_details = None
+                            if all_item_details and 'found_issues' in all_item_details:
+                                item_details = all_item_details['found_issues'].get(item_key)
                             
-                        item_details_task = create_task_from_config(
-                            "item_details_task",
-                            tasks_config['tasks']['templates']['item_details_task'],
-                            agents,
-                            item_type=item_type.lower(),
-                            item_key=item_key,
-                            fetcher_agent=fetcher_agent_name
-                        )
-                        
-                        details_crew = Crew(
-                            agents=[agents[fetcher_agent_name]],
-                            tasks=[item_details_task],
-                            verbose=True
-                        )
-                        
-                        details_result = details_crew.kickoff()
-                        item_details = extract_json_from_result(details_result.tasks_output[0])
-                        
-                        # Generate analysis summary
-                        item_summary = "No summary available - failed to fetch details"
-                        if item_details and not item_details.get('error'):
-                            analysis_task = create_task_from_config(
-                                "item_analysis_task",
-                                tasks_config['tasks']['templates']['item_analysis_task'],
+                            # Generate analysis summary
+                            item_summary = "No summary available - failed to fetch details"
+                            if item_details and not item_details.get('error'):
+                                analysis_task = create_task_from_config(
+                                    "item_analysis_task",
+                                    tasks_config['tasks']['templates']['item_analysis_task'],
+                                    agents,
+                                    item_type=item_type,
+                                    item_details=json.dumps(item_details, indent=2),
+                                    item_key=item_key
+                                )
+                                
+                                analysis_crew = Crew(
+                                    agents=[agents['story_task_analyzer']],
+                                    tasks=[analysis_task],
+                                    verbose=True
+                                )
+                                
+                                analysis_result = analysis_crew.kickoff()
+                                item_summary = str(analysis_result.tasks_output[0]).strip()
+                            
+                            story_task_analyses.append({
+                                'key': item_key,
+                                'summary': item.get('summary', 'No summary'),
+                                'item_type': item_type,
+                                'status': item.get('status', 'Unknown'),
+                                'priority': item.get('priority', 'Unknown'),
+                                'created': format_timestamp(item.get('created', '')),
+                                'updated': format_timestamp(item.get('updated', '')),
+                                'resolution_date': format_timestamp(item.get('resolution_date', '')),
+                                'analysis': item_summary
+                            })
+                            
+                            print(" ✅ Done")
+                            
+                        except Exception as e:
+                            print(f" ❌ Error: {str(e)}")
+                            import traceback
+                            print(f"   🐛 Debug traceback: {traceback.format_exc()}")
+                            
+                except Exception as e:
+                    print(f"   ❌ Batch fetch failed: {str(e)}")
+                    print("   🔄 Falling back to individual calls...")
+                    
+                    # Fallback to individual calls if batch fails
+                    for i, item in enumerate(recent_stories_tasks, 1):
+                        item_key = item.get('key', 'Unknown')
+                        item_type = item.get('item_type', 'Unknown')
+                        print(f"   📋 {i}/{len(recent_stories_tasks)} Analyzing {item_key} ({item_type}) (fallback)...", end="")
+                       
+                        try:
+                            # Get detailed item information
+                            # Use appropriate fetcher based on item type
+                            if item_type == 'STORY':
+                                fetcher_agent_name = 'story_fetcher'
+                            elif item_type == 'TASK':
+                                fetcher_agent_name = 'task_fetcher'
+                            else:
+                                # Fallback for other types - use story fetcher as it's more general
+                                fetcher_agent_name = 'story_fetcher'
+                                
+                            item_details_task = create_task_from_config(
+                                "item_details_task",
+                                tasks_config['tasks']['templates']['item_details_task'],
                                 agents,
-                                item_type=item_type,
-                                item_details=json.dumps(item_details, indent=2),
-                                item_key=item_key
+                                item_type=item_type.lower(),
+                                item_key=item_key,
+                                fetcher_agent=fetcher_agent_name
                             )
                             
-                            analysis_crew = Crew(
-                                agents=[agents['story_task_analyzer']],
-                                tasks=[analysis_task],
+                            details_crew = Crew(
+                                agents=[agents[fetcher_agent_name]],
+                                tasks=[item_details_task],
                                 verbose=True
                             )
                             
-                            analysis_result = analysis_crew.kickoff()
-                            item_summary = str(analysis_result.tasks_output[0]).strip()
-                        
-                        story_task_analyses.append({
-                            'key': item_key,
-                            'summary': item.get('summary', 'No summary'),
-                            'item_type': item_type,
-                            'status': item.get('status', 'Unknown'),
-                            'priority': item.get('priority', 'Unknown'),
-                            'created': format_timestamp(item.get('created', '')),
-                            'updated': format_timestamp(item.get('updated', '')),
-                            'resolution_date': format_timestamp(item.get('resolution_date', '')),
-                            'analysis': item_summary
-                        })
-                        
-                        print(" ✅ Done")
-                        
-                    except Exception as e:
-                        print(f" ❌ Error: {str(e)}")
-                        import traceback
-                        print(f"   🐛 Debug traceback: {traceback.format_exc()}")
+                            details_result = details_crew.kickoff()
+                            item_details = extract_json_from_result(details_result.tasks_output[0])
+                            
+                            # Generate analysis summary
+                            item_summary = "No summary available - failed to fetch details"
+                            if item_details and not item_details.get('error'):
+                                analysis_task = create_task_from_config(
+                                    "item_analysis_task",
+                                    tasks_config['tasks']['templates']['item_analysis_task'],
+                                    agents,
+                                    item_type=item_type,
+                                    item_details=json.dumps(item_details, indent=2),
+                                    item_key=item_key
+                                )
+                                
+                                analysis_crew = Crew(
+                                    agents=[agents['story_task_analyzer']],
+                                    tasks=[analysis_task],
+                                    verbose=True
+                                )
+                                
+                                analysis_result = analysis_crew.kickoff()
+                                item_summary = str(analysis_result.tasks_output[0]).strip()
+                            
+                            story_task_analyses.append({
+                                'key': item_key,
+                                'summary': item.get('summary', 'No summary'),
+                                'item_type': item_type,
+                                'status': item.get('status', 'Unknown'),
+                                'priority': item.get('priority', 'Unknown'),
+                                'created': format_timestamp(item.get('created', '')),
+                                'updated': format_timestamp(item.get('updated', '')),
+                                'resolution_date': format_timestamp(item.get('resolution_date', '')),
+                                'analysis': item_summary
+                            })
+                            
+                            print(" ✅ Done")
+                            
+                        except Exception as e:
+                            print(f" ❌ Error: {str(e)}")
+                            import traceback
+                            print(f"   🐛 Debug traceback: {traceback.format_exc()}")
                         
                 print(f"   ✅ Generated {len(story_task_analyses)} LLM analyses for stories/tasks")
                 
