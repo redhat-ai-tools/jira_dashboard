@@ -4,9 +4,10 @@ A comprehensive JIRA reporting and analysis system powered by CrewAI agents and 
 
 ## 🚀 Features
 
-- **Epic Activity Analysis**: Track recent activity across epics and their connected issues
+- **Epic Activity Analysis**: Track recent activity across both in progress and closed epics with their connected issues
 - **Critical/Blocker Bug Reports**: Analyze high-priority bugs with detailed summaries
 - **Automated Story & Task Tracking**: Monitor progress on stories and tasks
+- **Component Filtering**: Optional filtering by specific JIRA components
 - **Consolidated Summaries**: Generate comprehensive project status reports
 - **Project-Agnostic**: Works with any JIRA project by specifying the project key
 - **Configurable Time Periods**: Customize analysis timeframes (default: 14 days)
@@ -38,14 +39,16 @@ pip install crewai crewai-tools crewai-tools[mcp] pyyaml
 
 ## 📊 Available Reports & Scripts
 
-### `full_epic_activity_analysis.py`
-**Purpose**: Analyzes epics in progress with recent activity in related issues in a given time period
+### 🔍 Epic Analysis Reports
+
+#### `full_epic_activity_analysis.py`
+**Purpose**: Analyzes both in progress and closed epics with recent activity in related issues in a given time period
 
 **What it does**:
-- Finds all project epics in progress
+- Finds all project epics (both in progress and closed)
 - Identifies related issues with recent updates
 - Generates detailed summaries for each epic with recent activity
-- Creates comprehensive epic-level insights
+- Creates comprehensive epic-level insights separated by status
 
 **Usage**:
 ```bash
@@ -54,11 +57,15 @@ python full_epic_activity_analysis.py --project YOUR_PROJECT --days NUMBER_OF_DA
 
 # Multiple projects
 python full_epic_activity_analysis.py --project "PROJ1,PROJ2,PROJ3" --days NUMBER_OF_DAYS
+
+# With component filtering
+python full_epic_activity_analysis.py --project YOUR_PROJECT --days 14 --components "component-x,component-y"
 ```
 
 **Parameters**:
 - `--project` (required): JIRA project key(s) to analyze - single project or comma-separated list (e.g., 'MYPROJ' or 'PROJ1,PROJ2,PROJ3')
 - `--days` (optional): Number of days to look back for analysis (default: 14)
+- `--components` (optional): Comma-separated components to filter by (e.g., "component-x,component-y")
 
 **Output** (for each project): 
 - `{project}_recently_updated_epics_summary.txt` - Detailed epic summaries
@@ -66,7 +73,9 @@ python full_epic_activity_analysis.py --project "PROJ1,PROJ2,PROJ3" --days NUMBE
 
 ---
 
-### `bugs_analysis.py`
+### 🔧 Individual Analysis Scripts
+
+#### `bugs_analysis.py`
 **Purpose**: Dedicated critical/blocker bugs analysis
 
 **Usage**:
@@ -74,11 +83,11 @@ python full_epic_activity_analysis.py --project "PROJ1,PROJ2,PROJ3" --days NUMBE
 # Single project
 python bugs_analysis.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
 
-# Multiple projects
-python bugs_analysis.py --project "PROJ1,PROJ2,PROJ3" --days NUMBER_OF_DAYS
+# Multiple projects with component filtering
+python bugs_analysis.py --project "PROJ1,PROJ2,PROJ3" --days 14 --components "component-x,component-y"
 ```
 
-### `stories_tasks_analysis.py`
+#### `stories_tasks_analysis.py`
 **Purpose**: Dedicated stories and tasks analysis
 
 **Usage**:
@@ -86,11 +95,11 @@ python bugs_analysis.py --project "PROJ1,PROJ2,PROJ3" --days NUMBER_OF_DAYS
 # Single project
 python stories_tasks_analysis.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
 
-# Multiple projects
-python stories_tasks_analysis.py --project "PROJ1,PROJ2,PROJ3" --days NUMBER_OF_DAYS
+# Multiple projects with component filtering
+python stories_tasks_analysis.py --project "PROJ1,PROJ2,PROJ3" --days 14 --components "component-x,component-y"
 ```
 
-### `epic_summary_generator.py`
+#### `epic_summary_generator.py`
 **Purpose**: Dedicated epic progress analysis (requires epic summaries from full_epic_activity_analysis.py)
 
 **Usage**:
@@ -105,6 +114,7 @@ python epic_summary_generator.py --project "PROJ1,PROJ2,PROJ3" --days NUMBER_OF_
 **Parameters** (for all individual scripts):
 - `--project` (required): JIRA project key(s) to analyze - single project or comma-separated list
 - `--days` (optional): Number of days to look back for analysis (default: 14)
+- `--components` (optional): Comma-separated components to filter by (e.g., "component-x,component-y")
 
 ## ⚙️ Configuration System
 
@@ -193,8 +203,8 @@ your_task = create_task_from_config(
 ```
 
 **Available template variables:**
-- `{project}`: Project key (e.g., "PROJECT")
-- `{project_lower}`: Lowercase project key (e.g., "project")  
+- `{project}`: Project key (e.g., "QEMETRICS")
+- `{project_lower}`: Lowercase project key (e.g., "qemetrics")  
 - `{timeframe}`: Analysis timeframe in days
 - Any custom variables you pass to `create_task_from_config()`
 
@@ -299,7 +309,7 @@ high_priority_task = create_task_from_config(
     "high_priority_bugs_task",
     tasks_config['tasks']['high_priority_bugs_task'],
     agents,
-    project="PROJ",
+    project="QEMETRICS",
     timeframe=14
 )
 
@@ -328,13 +338,16 @@ export GEMINI_API_KEY="your_api_key"
 export SNOWFLAKE_TOKEN="your_token"
 export SNOWFLAKE_URL="your_snowflake_url"
 
-# Run epic analysis for your project
+# Run epic analysis for your project (includes both in progress and closed epics)
 python full_epic_activity_analysis.py --project MYPROJ --days NUMBER_OF_DAYS
 
 # Run individual analysis scripts as needed
 python bugs_analysis.py --project MYPROJ --days NUMBER_OF_DAYS
 python stories_tasks_analysis.py --project MYPROJ --days NUMBER_OF_DAYS
 python epic_summary_generator.py --project MYPROJ --days NUMBER_OF_DAYS
+
+# With component filtering (optional)
+python full_epic_activity_analysis.py --project MYPROJ --days 14 --components "component-x,component-y"
 
 # Create dashboard (requires additional setup - see dashboard section)
 python crewai_dashboard.py --project MYPROJ --days NUMBER_OF_DAYS
