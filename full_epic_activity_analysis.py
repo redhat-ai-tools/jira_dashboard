@@ -45,12 +45,13 @@ server_params = {
 }
 
 
-def main(analysis_period_days=14, projects=None):
+def main(analysis_period_days=14, projects=None, components=None):
     """Main analysis function
     
     Args:
         analysis_period_days (int): Number of days to look back for analysis (default: 14)
         projects (list): List of JIRA project keys to analyze (required)
+        components (str): Optional comma-separated components to filter by (e.g., 'component-x,component-y')
     """
     if not projects:
         raise ValueError("Project parameter is required. Please specify JIRA project key(s) using --project.")
@@ -71,7 +72,7 @@ def main(analysis_period_days=14, projects=None):
         print("=" * 60)
         
         try:
-            analyze_single_project(analysis_period_days, project)
+            analyze_single_project(analysis_period_days, project, components)
             print(f"✅ {project} analysis completed successfully")
         except Exception as e:
             print(f"❌ Error analyzing {project}: {str(e)}")
@@ -81,12 +82,13 @@ def main(analysis_period_days=14, projects=None):
     
     print(f"\n🎉 Multi-project analysis complete! Processed {len(projects)} projects.")
 
-def analyze_single_project(analysis_period_days, project):
+def analyze_single_project(analysis_period_days, project, components=None):
     """Analyze epic activity for a single project
     
     Args:
         analysis_period_days (int): Number of days to look back for analysis
         project (str): JIRA project key to analyze
+        components (str): Optional comma-separated components to filter by
     """
     print(f"🎯 {project} Epic Connected Issues Analysis")
     print(f"📋 Analyzing all {project} epics and their connected issues")
@@ -107,17 +109,27 @@ def analyze_single_project(analysis_period_days, project):
             # Load tasks configuration
             tasks_config = load_tasks_config()
             
-            # Task 1: Get all project epics
-            get_epics_task = create_task_from_config("get_epics_task", tasks_config['tasks']['get_epics_task'], agents, project=project, project_lower=project.lower())
+            # Format components parameter for task templates
+            components_param = f"\n- components='{components}'" if components else ""
+            
+            # Task 1: Get project epics (both in progress and closed)
+            print(f"📡 Phase 1: Fetching all {project} epics...")
+            
+            # Fetch in progress epics (status='10018')
+            print(f"   📋 Fetching in progress epics (status='10018')...")
+            get_epics_in_progress_task = create_task_from_config("get_epics_task", tasks_config['tasks']['get_epics_task'], agents, project=project, project_lower=project.lower(), components_param=components_param, status='10018', status_name='in_progress')
+            
+            # Fetch closed epics (status='6')
+            print(f"   📋 Fetching closed epics (status='6')...")
+            get_epics_closed_task = create_task_from_config("get_epics_task", tasks_config['tasks']['get_epics_task'], agents, project=project, project_lower=project.lower(), components_param=components_param, status='6', status_name='closed')
             
             # Create crew for epic discovery
             crew = Crew(
-                agents=[agents['comprehensive_epic_analyst']],
-                tasks=[get_epics_task],
+                agents=[agents['comprehensive_epic_analyst'], agents['comprehensive_epic_analyst']],
+                tasks=[get_epics_in_progress_task, get_epics_closed_task],
                 verbose=True
             )
             
-            print(f"📡 Phase 1: Fetching all {project} epics...")
             result = crew.kickoff()
             
             # Debug: Print raw result
@@ -130,20 +142,38 @@ def analyze_single_project(analysis_period_days, project):
                     print(f"🐛 DEBUG: First task output type: {type(result.tasks_output[0])}")
                     print(f"🐛 DEBUG: First task output: {result.tasks_output[0]}")
             
-            # Extract epics data
-            if hasattr(result, 'tasks_output') and len(result.tasks_output) >= 1:
-                epics_result = result.tasks_output[0]
-                print(f"🐛 DEBUG: About to extract JSON from epics_result")
-                print(f"🐛 DEBUG: epics_result type: {type(epics_result)}")
-                print(f"🐛 DEBUG: epics_result content: {epics_result}")
+            # Initialize epic variables
+            in_progress_epics = []
+            closed_epics = []
+            epics = []
+            
+            # Extract epics data from both tasks (in progress and closed)
+            if hasattr(result, 'tasks_output') and len(result.tasks_output) >= 2:
+                # Extract in progress epics (first task)
+                in_progress_result = result.tasks_output[0]
+                in_progress_data = extract_json_from_result(in_progress_result)
+                if in_progress_data and 'issues' in in_progress_data:
+                    in_progress_epics = in_progress_data['issues']
+                    # Mark as in progress
+                    for epic in in_progress_epics:
+                        epic['epic_status_type'] = 'in_progress'
+                print(f"✅ Found {len(in_progress_epics)} {project} in progress epics")
                 
-                epics_data = extract_json_from_result(epics_result)
-                print(f"🐛 DEBUG: Extracted epics_data type: {type(epics_data)}")
-                print(f"🐛 DEBUG: Extracted epics_data: {epics_data}")
+                # Extract closed epics (second task)
+                closed_result = result.tasks_output[1]
+                closed_data = extract_json_from_result(closed_result)
+                if closed_data and 'issues' in closed_data:
+                    closed_epics = closed_data['issues']
+                    # Mark as closed
+                    for epic in closed_epics:
+                        epic['epic_status_type'] = 'closed'
+                print(f"✅ Found {len(closed_epics)} {project} closed epics")
                 
-                if epics_data and 'issues' in epics_data:
-                    epics = epics_data['issues']
-                    print(f"✅ Found {len(epics)} {project} epics")
+                # Combine both sets of epics
+                epics = in_progress_epics + closed_epics
+                print(f"✅ Total {len(epics)} {project} epics (in progress: {len(in_progress_epics)}, closed: {len(closed_epics)})")
+                
+                if epics:
                     
                     # Phase 2: Analyze each epic's connected issues
                     print("\n📡 Phase 2: Analyzing connected issues for each epic...")
@@ -343,6 +373,7 @@ def analyze_single_project(analysis_period_days, project):
                                             active_epics.append({
                                                 'key': epic_key,
                                                 'summary': epic_summary,
+                                                'epic_status_type': epic.get('epic_status_type', 'unknown'),
                                                 'epic_updated': epic_updated,
                                                 'epic_updated_formatted': format_timestamp(epic_updated),
                                                 'total_connected_issues': len(child_issues),
@@ -585,6 +616,7 @@ def analyze_single_project(analysis_period_days, project):
                                         epic_summaries.append({
                                             'epic_key': epic_key,
                                             'epic_summary': epic['summary'],
+                                            'epic_status_type': epic.get('epic_status_type', 'unknown'),
                                             'recent_children_count': epic['recent_children_count'],
                                             'recently_updated_issues': issue_summaries,
                                             'epic_level_summary': epic_summary_formatted,
@@ -602,6 +634,10 @@ def analyze_single_project(analysis_period_days, project):
                         if epic_summaries:
                             print(f"\n📄 Saving epic summaries to file...")
                             
+                            # Separate epics by status
+                            in_progress_summaries = [s for s in epic_summaries if s.get('epic_status_type') == 'in_progress']
+                            closed_summaries = [s for s in epic_summaries if s.get('epic_status_type') == 'closed']
+                            
                             # Use project-specific filename
                             epic_summaries_file = f'{project.lower()}_recently_updated_epics_summary.txt'
                             with open(epic_summaries_file, 'w', encoding='utf-8') as f:
@@ -610,31 +646,67 @@ def analyze_single_project(analysis_period_days, project):
                                 f.write(f"Analysis Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                                 f.write(f"Analysis Period: Last {analysis_period_days} days (since {cutoff_str})\n")
                                 f.write(f"Total Active Epics Found: {len(epic_summaries)}\n")
+                                f.write(f"  - In Progress Epics: {len(in_progress_summaries)}\n")
+                                f.write(f"  - Closed Epics: {len(closed_summaries)}\n")
                                 f.write("=" * 80 + "\n\n")
                                 
-                                for i, summary in enumerate(epic_summaries, 1):
-                                    f.write(f"{i}. EPIC: {summary['epic_key']}\n")
-                                    f.write("-" * 60 + "\n")
-                                    f.write(f"Epic Title: {summary['epic_summary']}\n")
-                                    f.write(f"Recently Updated Connected Issues: {summary['recent_children_count']}\n")
-                                    f.write(f"Analysis Date: {summary['analysis_timestamp']}\n\n")
+                                # Write IN PROGRESS EPICS section
+                                if in_progress_summaries:
+                                    f.write("🔄 IN PROGRESS EPICS WITH RECENT ACTIVITY\n")
+                                    f.write("=" * 60 + "\n\n")
                                     
-                                    # Write individual issue summaries
-                                    f.write("RECENTLY UPDATED CONNECTED ISSUES:\n")
-                                    f.write("-" * 40 + "\n")
-                                    for j, issue in enumerate(summary['recently_updated_issues'], 1):
-                                        f.write(f"\n{j}. ISSUE: {issue['issue_key']} ({issue['link_type']})\n")
-                                        f.write(f"   Title: {issue['issue_title']}\n")
-                                        f.write(f"   Last Updated: {issue['updated_formatted']}\n")
-                                        f.write(f"   Summary:\n")
-                                        f.write(f"   {issue['detailed_summary']}\n")
-                                        f.write("-" * 30 + "\n")
+                                    for i, summary in enumerate(in_progress_summaries, 1):
+                                        f.write(f"{i}. EPIC: {summary['epic_key']} [IN PROGRESS]\n")
+                                        f.write("-" * 60 + "\n")
+                                        f.write(f"Epic Title: {summary['epic_summary']}\n")
+                                        f.write(f"Recently Updated Connected Issues: {summary['recent_children_count']}\n")
+                                        f.write(f"Analysis Date: {summary['analysis_timestamp']}\n\n")
+                                        
+                                        # Write individual issue summaries
+                                        f.write("RECENTLY UPDATED CONNECTED ISSUES:\n")
+                                        f.write("-" * 40 + "\n")
+                                        for j, issue in enumerate(summary['recently_updated_issues'], 1):
+                                            f.write(f"\n{j}. ISSUE: {issue['issue_key']} ({issue['link_type']})\n")
+                                            f.write(f"   Title: {issue['issue_title']}\n")
+                                            f.write(f"   Last Updated: {issue['updated_formatted']}\n")
+                                            f.write(f"   Summary:\n")
+                                            f.write(f"   {issue['detailed_summary']}\n")
+                                            f.write("-" * 30 + "\n")
+                                        
+                                        # Write epic-level summary
+                                        f.write("\nEPIC-LEVEL SUMMARY (Based on Recently Updated Issues):\n")
+                                        f.write("-" * 40 + "\n")
+                                        f.write(summary['epic_level_summary'])
+                                        f.write("\n\n" + "=" * 80 + "\n\n")
+                                
+                                # Write CLOSED EPICS section
+                                if closed_summaries:
+                                    f.write("✅ CLOSED EPICS WITH RECENT ACTIVITY\n")
+                                    f.write("=" * 60 + "\n\n")
                                     
-                                    # Write epic-level summary
-                                    f.write("\nEPIC-LEVEL SUMMARY (Based on Recently Updated Issues):\n")
-                                    f.write("-" * 40 + "\n")
-                                    f.write(summary['epic_level_summary'])
-                                    f.write("\n\n" + "=" * 80 + "\n\n")
+                                    for i, summary in enumerate(closed_summaries, 1):
+                                        f.write(f"{i}. EPIC: {summary['epic_key']} [CLOSED]\n")
+                                        f.write("-" * 60 + "\n")
+                                        f.write(f"Epic Title: {summary['epic_summary']}\n")
+                                        f.write(f"Recently Updated Connected Issues: {summary['recent_children_count']}\n")
+                                        f.write(f"Analysis Date: {summary['analysis_timestamp']}\n\n")
+                                        
+                                        # Write individual issue summaries
+                                        f.write("RECENTLY UPDATED CONNECTED ISSUES:\n")
+                                        f.write("-" * 40 + "\n")
+                                        for j, issue in enumerate(summary['recently_updated_issues'], 1):
+                                            f.write(f"\n{j}. ISSUE: {issue['issue_key']} ({issue['link_type']})\n")
+                                            f.write(f"   Title: {issue['issue_title']}\n")
+                                            f.write(f"   Last Updated: {issue['updated_formatted']}\n")
+                                            f.write(f"   Summary:\n")
+                                            f.write(f"   {issue['detailed_summary']}\n")
+                                            f.write("-" * 30 + "\n")
+                                        
+                                        # Write epic-level summary
+                                        f.write("\nEPIC-LEVEL SUMMARY (Based on Recently Updated Issues):\n")
+                                        f.write("-" * 40 + "\n")
+                                        f.write(summary['epic_level_summary'])
+                                        f.write("\n\n" + "=" * 80 + "\n\n")
                             
                             print(f"✅ Epic summaries saved to: {epic_summaries_file}")
                     
@@ -644,37 +716,73 @@ def analyze_single_project(analysis_period_days, project):
                     print("="*80)
                     
                     if active_epics:
-                        print(f"🎯 Found {len(active_epics)} epics with recently updated connected issues:")
+                        # Separate active epics by status
+                        active_in_progress = [epic for epic in active_epics if epic.get('epic_status_type') == 'in_progress']
+                        active_closed = [epic for epic in active_epics if epic.get('epic_status_type') == 'closed']
                         
-                        for i, epic in enumerate(active_epics, 1):
-                            print(f"\n{i:2d}. 📋 {epic['key']}: {epic['summary']}")
-                            print(f"     📅 Epic updated: {epic['epic_updated_formatted']}")
-                            print(f"     🔗 Total connected: {epic['total_connected_issues']}")
-                            print(f"     ⚡ Recent updates: {epic['recent_children_count']}")
-                            
-                            print(f"     📝 Recently updated connected issues:")
-                            for j, child in enumerate(epic['recently_updated_children'], 1):
-                                print(f"       {j}. {child['key']} ({child['link_type']})")
-                                print(f"          📅 Updated: {child['updated_formatted']}")
-                                print(f"          📝 {child['summary'][:80]}{'...' if len(child['summary']) > 80 else ''}")
+                        print(f"🎯 Found {len(active_epics)} epics with recently updated connected issues:")
+                        print(f"   🔄 In Progress: {len(active_in_progress)}")
+                        print(f"   ✅ Closed: {len(active_closed)}")
+                        
+                        # Display IN PROGRESS epics
+                        if active_in_progress:
+                            print(f"\n🔄 IN PROGRESS EPICS ({len(active_in_progress)}):")
+                            for i, epic in enumerate(active_in_progress, 1):
+                                print(f"\n{i:2d}. 📋 {epic['key']}: {epic['summary']}")
+                                print(f"     📅 Epic updated: {epic['epic_updated_formatted']}")
+                                print(f"     🔗 Total connected: {epic['total_connected_issues']}")
+                                print(f"     ⚡ Recent updates: {epic['recent_children_count']}")
+                                
+                                print(f"     📝 Recently updated connected issues:")
+                                for j, child in enumerate(epic['recently_updated_children'], 1):
+                                    print(f"       {j}. {child['key']} ({child['link_type']})")
+                                    print(f"          📅 Updated: {child['updated_formatted']}")
+                                    print(f"          📝 {child['summary'][:80]}{'...' if len(child['summary']) > 80 else ''}")
+                        
+                        # Display CLOSED epics
+                        if active_closed:
+                            print(f"\n✅ CLOSED EPICS ({len(active_closed)}):")
+                            for i, epic in enumerate(active_closed, 1):
+                                print(f"\n{i:2d}. 📋 {epic['key']}: {epic['summary']}")
+                                print(f"     📅 Epic updated: {epic['epic_updated_formatted']}")
+                                print(f"     🔗 Total connected: {epic['total_connected_issues']}")
+                                print(f"     ⚡ Recent updates: {epic['recent_children_count']}")
+                                
+                                print(f"     📝 Recently updated connected issues:")
+                                for j, child in enumerate(epic['recently_updated_children'], 1):
+                                    print(f"       {j}. {child['key']} ({child['link_type']})")
+                                    print(f"          📅 Updated: {child['updated_formatted']}")
+                                    print(f"          📝 {child['summary'][:80]}{'...' if len(child['summary']) > 80 else ''}")
                     else:
                         print("💡 No epics found with recently updated connected issues")
                         print("📝 Note: All epics were checked for connected issue activity")
                     
                     # Save comprehensive results
+                    # Separate counts by status
+                    active_in_progress = [epic for epic in active_epics if epic.get('epic_status_type') == 'in_progress']
+                    active_closed = [epic for epic in active_epics if epic.get('epic_status_type') == 'closed']
+                    
                     output_data = {
                         'analysis_date': datetime.now().isoformat(),
                         'cutoff_date': cutoff_date.isoformat(),
                         'cutoff_date_formatted': cutoff_str,
-                        'analysis_scope': f'Connected issues for all {project} epics',
+                        'analysis_scope': f'Connected issues for all {project} epics (both in progress and closed)',
                         'total_epics_analyzed': len(epics),
+                        'total_in_progress_epics': len(in_progress_epics),
+                        'total_closed_epics': len(closed_epics),
                         'active_epics_count': len(active_epics),
+                        'active_in_progress_count': len(active_in_progress),
+                        'active_closed_count': len(active_closed),
                         'active_epics': active_epics,
+                        'active_in_progress_epics': active_in_progress,
+                        'active_closed_epics': active_closed,
                         'epic_summaries_generated': len(epic_summaries) if 'epic_summaries' in locals() else 0,
                         'summary': {
-                            'strategy': 'Full connected issue analysis with content summaries',
+                            'strategy': 'Full connected issue analysis with content summaries for both in progress and closed epics',
                             'criteria': f'Epics where connected issues updated in last {analysis_period_days} days',
-                            'total_recent_children': sum(epic['recent_children_count'] for epic in active_epics)
+                            'total_recent_children': sum(epic['recent_children_count'] for epic in active_epics),
+                            'in_progress_recent_children': sum(epic['recent_children_count'] for epic in active_in_progress),
+                            'closed_recent_children': sum(epic['recent_children_count'] for epic in active_closed)
                         }
                     }
                     
@@ -685,20 +793,32 @@ def analyze_single_project(analysis_period_days, project):
                     
                     # Summary statistics
                     total_recent_children = sum(epic['recent_children_count'] for epic in active_epics)
+                    active_in_progress = [epic for epic in active_epics if epic.get('epic_status_type') == 'in_progress']
+                    active_closed = [epic for epic in active_epics if epic.get('epic_status_type') == 'closed']
+                    
                     print(f"\n📊 SUMMARY STATISTICS:")
                     print(f"   📋 Total {project} epics analyzed: {len(epics)}")
+                    print(f"     🔄 In Progress epics: {len(in_progress_epics)}")
+                    print(f"     ✅ Closed epics: {len(closed_epics)}")
                     print(f"   🎯 Epics with recent connected updates: {len(active_epics)}")
+                    print(f"     🔄 Active In Progress epics: {len(active_in_progress)}")
+                    print(f"     ✅ Active Closed epics: {len(active_closed)}")
                     print(f"   ⚡ Total recently updated connected issues: {total_recent_children}")
+                    if active_in_progress:
+                        in_progress_children = sum(epic['recent_children_count'] for epic in active_in_progress)
+                        print(f"     🔄 In Progress epic issues: {in_progress_children}")
+                    if active_closed:
+                        closed_children = sum(epic['recent_children_count'] for epic in active_closed)
+                        print(f"     ✅ Closed epic issues: {closed_children}")
                     print(f"   📝 Epic content summaries generated: {len(epic_summaries) if 'epic_summaries' in locals() else 0}")
                     print(f"   📅 Analysis period: Last {analysis_period_days} days (since {cutoff_str})")
                     
                 else:
-                    print("❌ Could not extract epics data")
-                    print(f"🐛 DEBUG: epics_data is None or missing 'issues' key")
-                    print(f"🐛 DEBUG: epics_data: {epics_data}")
+                    print("❌ Could not extract epics data from both tasks")
+                    print(f"🐛 DEBUG: Expected 2 tasks (in progress + closed), got {len(result.tasks_output) if hasattr(result, 'tasks_output') else 0}")
             else:
                 print("❌ Could not get epics")
-                print(f"🐛 DEBUG: Result structure issue - no tasks_output or empty")
+                print(f"🐛 DEBUG: Result structure issue - expected 2 tasks (in progress + closed) but got {len(result.tasks_output) if hasattr(result, 'tasks_output') else 0}")
                 
     except Exception as e:
         print(f"❌ Error: {str(e)}")
@@ -710,6 +830,8 @@ if __name__ == "__main__":
                        help='Number of days to look back for analysis (default: 14)')
     parser.add_argument('--project', '-p', type=str, required=True,
                        help='JIRA project key(s) to analyze - single project or comma-separated list (e.g., "PROJ1" or "PROJ1,PROJ2,PROJ3")')
+    parser.add_argument('--components', '-c', type=str, default=None,
+                       help='Optional comma-separated components to filter by (e.g., "component-x,component-y")')
     
     args = parser.parse_args()
     
@@ -719,4 +841,4 @@ if __name__ == "__main__":
     else:
         projects = [args.project.strip()]
     
-    main(analysis_period_days=args.days, projects=projects) 
+    main(analysis_period_days=args.days, projects=projects, components=args.components) 
