@@ -43,12 +43,13 @@ server_params = {
     }
 }
 
-def main(analysis_period_days=14, projects=None):
+def main(analysis_period_days=14, projects=None, components=None):
     """Main function to analyze stories and tasks
     
     Args:
         analysis_period_days (int): Number of days to look back for analysis (default: 14)
         projects (list): List of JIRA project keys to analyze (required)
+        components (str): Optional comma-separated components to filter by (e.g., 'x,y')
     """
     if not projects:
         raise ValueError("Project parameter is required. Please specify JIRA project key(s) using --project.")
@@ -69,7 +70,7 @@ def main(analysis_period_days=14, projects=None):
         print("=" * 60)
         
         try:
-            analyze_single_project(analysis_period_days, project)
+            analyze_single_project(analysis_period_days, project, components)
             print(f"✅ {project} analysis completed successfully")
         except Exception as e:
             print(f"❌ Error analyzing {project}: {str(e)}")
@@ -79,12 +80,13 @@ def main(analysis_period_days=14, projects=None):
     
     print(f"\n🎉 Multi-project analysis complete! Processed {len(projects)} projects.")
 
-def analyze_single_project(analysis_period_days, project):
+def analyze_single_project(analysis_period_days, project, components=None):
     """Analyze stories and tasks for a single project
     
     Args:
         analysis_period_days (int): Number of days to look back for analysis
         project (str): JIRA project key to analyze
+        components (str): Optional comma-separated components to filter by
     """
     print(f"📋 {project} Stories and Tasks Analysis")
     print(f"📋 Analyzing stories and tasks from {project} project")
@@ -108,13 +110,16 @@ def analyze_single_project(analysis_period_days, project):
             # Step 1: Fetch and analyze stories and tasks
             print(f"\n📋 Step 1: Analyzing stories and tasks from {project} (last {analysis_period_days} days)...")
             
+            # Format components parameter for task templates
+            components_param = f"\n- components='{components}'" if components else ""
+            
             # Fetch stories (issue_type=17)
             print("   📖 Fetching stories (issue_type=17)...")
-            stories_task = create_task_from_config("stories_task", tasks_config['tasks']['stories_task'], agents, timeframe=analysis_period_days, project=project, project_lower=project.lower())
+            stories_task = create_task_from_config("stories_task", tasks_config['tasks']['stories_task'], agents, timeframe=analysis_period_days, project=project, project_lower=project.lower(), components_param=components_param)
             
             # Fetch tasks (issue_type=3)
             print("   📝 Fetching tasks (issue_type=3)...")
-            tasks_task = create_task_from_config("tasks_task", tasks_config['tasks']['tasks_task'], agents, timeframe=analysis_period_days, project=project, project_lower=project.lower())
+            tasks_task = create_task_from_config("tasks_task", tasks_config['tasks']['tasks_task'], agents, timeframe=analysis_period_days, project=project, project_lower=project.lower(), components_param=components_param)
             
             # Execute stories and tasks fetching
             stories_tasks_crew = Crew(
@@ -441,6 +446,8 @@ if __name__ == "__main__":
                        help='Number of days to look back for analysis (default: 14)')
     parser.add_argument('--project', '-p', type=str, required=True,
                        help='JIRA project key(s) to analyze - single project or comma-separated list (e.g., "PROJ1" or "PROJ1,PROJ2,PROJ3")')
+    parser.add_argument('--components', '-c', type=str, default=None,
+                       help='Optional comma-separated components to filter by (e.g., "x,y")')
     
     args = parser.parse_args()
     
@@ -450,5 +457,5 @@ if __name__ == "__main__":
     else:
         projects = [args.project.strip()]
     
-    main(analysis_period_days=args.days, projects=projects)
+    main(analysis_period_days=args.days, projects=projects, components=args.components)
 
