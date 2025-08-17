@@ -39,8 +39,6 @@ pip install crewai crewai-tools crewai-tools[mcp] pyyaml
 
 ## 📊 Available Reports & Scripts
 
-### 🔍 Epic Analysis Reports
-
 #### `full_epic_activity_analysis.py`
 **Purpose**: Analyzes both in progress and closed epics with recent activity in related issues in a given time period
 
@@ -71,9 +69,6 @@ python full_epic_activity_analysis.py --project YOUR_PROJECT --days 14 --compone
 - `{project}_recently_updated_epics_summary.txt` - Detailed epic summaries
 - `{project}_full_epic_activity_analysis.json` - Raw analysis data
 
----
-
-### 🔧 Individual Analysis Scripts
 
 #### `bugs_analysis.py`
 **Purpose**: Dedicated critical/blocker bugs analysis
