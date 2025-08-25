@@ -77,6 +77,22 @@ tasks:
     expected_output: "Valid JSON data containing {project} task issues - must be parseable as JSON"
     output_file: "{project_lower}_tasks.json"
 
+  fetch_issues_task:
+    description: |
+      Use list_jira_issues to get all issues from {project} project created in the last {days} days:
+      
+      Call list_jira_issues with:
+      - project='{project}'
+      - created_days={days}
+      - limit=300{components_param}
+      
+      CRITICAL: Return the complete list of issues as VALID JSON.
+      Your response must be parseable JSON, not text description.
+      Ensure the response contains the exact JSON structure returned by the MCP tool.
+    agent: "issues_fetcher"
+    expected_output: "Valid JSON data containing {project} issues created in last {days} days - must be parseable as JSON"
+    output_file: "{project_lower}_recent_issues.json"
+
   epic_analysis_task:
     description: |
       Analyze the following epic summaries to identify which epics show significant changes, 
@@ -468,4 +484,52 @@ tasks:
         - Do not add any text description - only return parseable JSON
         - The response should contain the 'found_issues' dictionary with all child issue details
       agent: "comprehensive_epic_analyst"
-      expected_output: "Raw JSON data from get_jira_issue_details tool with NO additional text - must be parseable as JSON" 
+      expected_output: "Raw JSON data from get_jira_issue_details tool with NO additional text - must be parseable as JSON"
+
+    issues_executive_analysis_task:
+      description: |
+        Analyze the following comprehensive JIRA issues data from {project} project to create an executive summary with strategic insights:
+
+        Issues Data (includes full descriptions, comments, labels, and links): {issues_data}
+
+        NOTE: This data includes detailed information for each issue:
+        - Full descriptions (not truncated)
+        - All comments and recent activity discussions
+        - Labels and component associations
+        - Issue links and relationships
+        - Complete metadata (priority, status, type, etc.)
+
+        Create an executive analysis that includes:
+
+        1. **TOP 5 REPEATED ISSUES OR QUESTIONS**:
+           - Identify the most frequently occurring issues, problems, or questions
+           - Look for patterns in summaries, descriptions, comments, and issue types
+           - Focus on issues that appear multiple times or have similar themes
+           - Use comment discussions to understand user pain points
+
+        2. **TOP 3 THEMES USERS WERE ASKING OR COMPLAINING ABOUT**:
+           - Identify broader themes and categories of user concerns
+           - Look at complaint patterns, feature requests, and problem areas in comments
+           - Focus on systemic issues rather than individual bugs
+           - Analyze comment sentiment and recurring discussion topics
+
+        3. **TOP 3 RECOMMENDATIONS TO IMPROVE THINGS**:
+           - Provide specific, actionable recommendations based on the analysis
+           - Focus on high-impact improvements that address the most common issues
+           - Consider process improvements, feature enhancements, or systemic fixes
+           - Base recommendations on patterns found in descriptions and comments
+
+        CRITICAL OUTPUT INSTRUCTIONS:
+        - DO NOT include any "Thought:", "Action:", "Observation:" or similar thinking process text
+        - DO NOT include any reasoning or analysis steps in your response
+        - Your response must ONLY contain the final executive summary content
+        - Start directly with the analysis content, no meta-commentary
+        - Provide specific issue keys and examples where relevant
+        - Make recommendations actionable and prioritized
+        - Use clear section headers and bullet points for readability
+        - Leverage the rich comment data to understand user sentiment and pain points
+
+        Focus on strategic insights that would help leadership understand user needs, 
+        pain points, and areas for improvement. Be concise but comprehensive.
+      agent: "issues_executive_analyst"
+      expected_output: "Direct executive analysis with top issues, themes, and recommendations leveraging detailed issue data including comments with NO thinking process or meta-commentary" 

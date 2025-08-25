@@ -7,6 +7,7 @@ A comprehensive JIRA reporting and analysis system powered by CrewAI agents and 
 - **Epic Activity Analysis**: Track recent activity across both in progress and closed epics with their connected issues
 - **Critical/Blocker Bug Reports**: Analyze high-priority bugs with detailed summaries
 - **Automated Story & Task Tracking**: Monitor progress on stories and tasks
+- **Executive HTML Reports**: Generate strategic insights and recommendations from recently created issues
 - **Component Filtering**: Optional filtering by specific JIRA components
 - **Consolidated Summaries**: Generate comprehensive project status reports
 - **Project-Agnostic**: Works with any JIRA project by specifying the project key
@@ -29,6 +30,7 @@ Set the following environment variables:
 export GEMINI_API_KEY="your_gemini_api_key_here"
 export SNOWFLAKE_TOKEN="your_snowflake_token_here"
 export SNOWFLAKE_URL="jira_mcp_snowflake_url_here"
+export JIRA_BASE_URL="https://your-jira-instance.com/browse/"  # Required for JIRA issue linking in HTML reports
 ```
 
 ### 2. Install Dependencies
@@ -38,6 +40,8 @@ pip install crewai crewai-tools crewai-tools[mcp] pyyaml
 ```
 
 ## 📊 Available Reports & Scripts
+
+### 🔍 Epic Analysis Reports
 
 #### `full_epic_activity_analysis.py`
 **Purpose**: Analyzes both in progress and closed epics with recent activity in related issues in a given time period
@@ -69,6 +73,9 @@ python full_epic_activity_analysis.py --project YOUR_PROJECT --days 14 --compone
 - `{project}_recently_updated_epics_summary.txt` - Detailed epic summaries
 - `{project}_full_epic_activity_analysis.json` - Raw analysis data
 
+---
+
+### 🔧 Individual Analysis Scripts
 
 #### `bugs_analysis.py`
 **Purpose**: Dedicated critical/blocker bugs analysis
@@ -105,6 +112,21 @@ python epic_summary_generator.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
 # Multiple projects
 python epic_summary_generator.py --project "PROJ1,PROJ2,PROJ3" --days NUMBER_OF_DAYS
 ```
+
+#### `issues_executive_report.py`
+**Purpose**: Generate executive-level HTML reports with strategic insights from recently created issues
+
+**Usage**:
+```bash
+# Single project
+python issues_executive_report.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
+
+# Multiple projects with component filtering
+python issues_executive_report.py --project "PROJ1,PROJ2,PROJ3" --days 14 --components "component-x,component-y"
+```
+
+**Output**: 
+- `{project}_executive_report.html` - Executive HTML report with strategic insights and automatically linked JIRA issue keys
 
 **Parameters** (for all individual scripts):
 - `--project` (required): JIRA project key(s) to analyze - single project or comma-separated list
@@ -340,9 +362,11 @@ python full_epic_activity_analysis.py --project MYPROJ --days NUMBER_OF_DAYS
 python bugs_analysis.py --project MYPROJ --days NUMBER_OF_DAYS
 python stories_tasks_analysis.py --project MYPROJ --days NUMBER_OF_DAYS
 python epic_summary_generator.py --project MYPROJ --days NUMBER_OF_DAYS
+python issues_executive_report.py --project MYPROJ --days NUMBER_OF_DAYS
 
 # With component filtering (optional)
 python full_epic_activity_analysis.py --project MYPROJ --days 14 --components "component-x,component-y"
+python issues_executive_report.py --project MYPROJ --days 14 --components "component-x,component-y"
 
 # Create dashboard (requires additional setup - see dashboard section)
 python crewai_dashboard.py --project MYPROJ --days NUMBER_OF_DAYS
