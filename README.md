@@ -153,7 +153,7 @@ python weekly_report.py --project "PROJ1,PROJ2" --days 7 --components "component
 
 **Parameters** (for all individual scripts):
 - `--project` (required): JIRA project key(s) to analyze - single project or comma-separated list
-- `--days` (optional): Number of days to look back for analysis (default: 14)
+- `--days` (optional): Number of days to look back for analysis (default: 7)
 - `--components` (optional): Comma-separated components to filter by (e.g., "component-x,component-y")
 
 ## ⚙️ Configuration System
