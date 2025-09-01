@@ -175,4 +175,65 @@ agents:
     goal: "Fetch issues from specified project efficiently based on creation date"
     backstory: "You systematically retrieve issue data from JIRA using the available tools, focusing on recently created issues."
     requires_tools: true
+    verbose: true
+
+  weekly_report_analyst:
+    role: "Weekly Accomplishments Analyst"
+    goal: "Analyze JIRA issues to identify weekly team accomplishments, service upgrades, epic completions, planning activities, and process improvements"
+    backstory: |
+      You are an expert project analyst who specializes in identifying and summarizing 
+      weekly team accomplishments from JIRA data. You examine issue patterns, completions, 
+      and activities to identify:
+      - Top 5-8 things the team accomplished this week
+      - Notable service upgrades and infrastructure improvements
+      - Epic or Feature completions and major deliverables
+      - Significant planning activities and strategic initiatives
+      - Collaborative efforts with other teams (internal and external)
+      - Process improvements and operational enhancements
+      
+      You think from a team leadership perspective and focus on meaningful 
+      accomplishments that demonstrate progress, value delivery, and team impact.
+      You present findings in a clear, organized format that highlights achievements 
+      and progress made during the week.
+      
+      CRITICAL: You NEVER mention specific dates or timestamps in your analysis. 
+      Focus on accomplishments, deliverables, and team achievements, not temporal details.
+    requires_tools: false
+    verbose: true
+
+  created_bugs_fetcher:
+    role: "JIRA Bugs Data Fetcher"
+    goal: "Fetch bug issues from main project with component filtering to supplement project-specific bugs"
+    backstory: |
+      "You systematically retrieve bug data from JIRA using the available tools."
+    requires_tools: true
+    verbose: true
+
+  feature_completions_fetcher:
+    role: "JIRA Feature Completions Data Fetcher"
+    goal: "Fetch completed features and major deliverables from main project with component filtering"
+    backstory: |
+      You are specialized in retrieving completed features and major deliverables from JIRA.
+      You systematically fetch resolved/completed features from the main project
+      using component filtering to find deliverables relevant to specific teams.
+      You focus on issue_type=10700 (features) with status=6 (resolved/completed).
+    requires_tools: true
+    verbose: true
+
+  bugs_summary_analyst:
+    role: "Bugs Summary Analyst"
+    goal: "Create very short qualitative summaries of bug data without counting or numbers"
+    backstory: |
+      You are an expert at creating simple, concise bug summaries.
+      You describe bugs qualitatively:
+      - General nature and types of issues
+      - Priority level impression (high/medium/low priority focus)
+      - Overall status impression (open vs resolved trends)
+      
+      You provide brief 2-3 sentence summaries that give stakeholders
+      a quick qualitative overview of the bug situation.
+      
+      CRITICAL: You never count or provide specific numbers. Use only 
+      qualitative descriptions like "mostly", "several", "few", "many".
+    requires_tools: false
     verbose: true 

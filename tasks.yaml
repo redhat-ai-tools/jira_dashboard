@@ -84,6 +84,7 @@ tasks:
       Call list_jira_issues with:
       - project='{project}'
       - created_days={days}
+      - status='6'
       - limit=300{components_param}
       
       CRITICAL: Return the complete list of issues as VALID JSON.
@@ -92,6 +93,45 @@ tasks:
     agent: "issues_fetcher"
     expected_output: "Valid JSON data containing {project} issues created in last {days} days - must be parseable as JSON"
     output_file: "{project_lower}_recent_issues.json"
+
+  created_bugs_task:
+    description: |
+      Use list_jira_issues to get additional bug issues created in the last {days} days from the main project 
+      to supplement the bugs already found in the project-specific analysis:
+      
+      Call list_jira_issues with:
+      - project='{main_project}'
+      - issue_type='1'
+      - created_days={days}
+      - components='{component}'
+      - limit=300
+      
+      CRITICAL: Return the complete list of bug issues as VALID JSON.
+      Your response must be parseable JSON, not text description.
+      Ensure the response contains the exact JSON structure returned by the MCP tool.
+    agent: "created_bugs_fetcher"
+    expected_output: "Valid JSON data containing additional {main_project} bug issues created in last {days} days with {component} components - must be parseable as JSON"
+    output_file: "{project_lower}_created_bugs.json"
+
+  feature_completions_task:
+    description: |
+      Use list_jira_issues to get completed features and major deliverables from the main project 
+      to supplement the weekly accomplishments analysis:
+      
+      Call list_jira_issues with:
+      - project='{main_project}'
+      - created_days={days}
+      - status='6'
+      - issue_type='10700'
+      - components='{component}'
+      - limit=300
+      
+      CRITICAL: Return the complete list of completed features as VALID JSON.
+      Your response must be parseable JSON, not text description.
+      Ensure the response contains the exact JSON structure returned by the MCP tool.
+    agent: "feature_completions_fetcher"
+    expected_output: "Valid JSON data containing completed {main_project} features and deliverables resolved in last {days} days with {component} components - must be parseable as JSON"
+    output_file: "{project_lower}_feature_completions.json"
 
   epic_analysis_task:
     description: |
@@ -532,4 +572,101 @@ tasks:
         Focus on strategic insights that would help leadership understand user needs, 
         pain points, and areas for improvement. Be concise but comprehensive.
       agent: "issues_executive_analyst"
-      expected_output: "Direct executive analysis with top issues, themes, and recommendations leveraging detailed issue data including comments with NO thinking process or meta-commentary" 
+      expected_output: "Direct executive analysis with top issues, themes, and recommendations leveraging detailed issue data including comments with NO thinking process or meta-commentary"
+
+    weekly_accomplishments_analysis_task:
+      description: |
+        Analyze the following comprehensive JIRA issues data from {project} project to create a weekly accomplishments report:
+
+        Issues Data (includes full descriptions, comments, labels, and links): {issues_data}
+
+        NOTE: This data includes detailed information for each issue:
+        - Full descriptions (not truncated)
+        - All comments and recent activity discussions
+        - Labels and component associations
+        - Issue links and relationships
+        - Complete metadata (priority, status, type, etc.)
+
+        Create a weekly accomplishments analysis that includes:
+
+        1. **TOP 5-8 THINGS THE TEAM ACCOMPLISHED THIS WEEK**:
+           - Identify completed work, resolved issues, and delivered features
+           - Look for closed/resolved issues, significant progress updates
+           - Focus on tangible deliverables and completed tasks
+           - Include both technical and business accomplishments
+
+        2. **NOTABLE SERVICE UPGRADES**:
+           - Identify infrastructure improvements, performance enhancements
+           - Look for system upgrades, deployment improvements, monitoring enhancements
+           - Focus on operational and technical improvements
+           - Include security, scalability, and reliability improvements
+
+        3. **NOTABLE EPIC OR FEATURE COMPLETION**:
+           - Identify completed epics, major features, or significant milestones
+           - Look for large deliverables that provide substantial business value
+           - Focus on customer-facing features and major technical achievements
+           - Include cross-functional deliverables and integration work
+
+        4. **SIGNIFICANT PLANNING ACTIVITIES**:
+           - Identify strategic planning, design work, and preparation activities
+           - Look for architecture decisions, requirement gathering, project planning
+           - Focus on foundational work that enables future development
+           - Include research, analysis, and design activities
+
+        5. **COLLABORATIVE EFFORTS WITH OTHER TEAMS**:
+           - Identify cross-team initiatives, integration work, and partnerships
+           - Look for both internal (within org) and external collaborations
+           - Focus on joint deliverables, shared projects, and team coordination
+           - Include knowledge sharing and support activities
+
+        6. **PROCESS IMPROVEMENTS**:
+           - Identify workflow optimizations, tool improvements, and efficiency gains
+           - Look for automation, standardization, and quality improvements
+           - Focus on changes that improve team productivity and effectiveness
+           - Include documentation, training, and operational improvements
+
+        CRITICAL OUTPUT INSTRUCTIONS:
+        - DO NOT include any "Thought:", "Action:", "Observation:" or similar thinking process text
+        - DO NOT include any reasoning or analysis steps in your response
+        - Your response must ONLY contain the final weekly report content
+        - Start directly with the accomplishments content, no meta-commentary
+        - Provide specific issue keys and examples where relevant
+        - Use clear section headers and bullet points for readability
+        - Focus on positive achievements and progress made
+        - Be concise but comprehensive in highlighting weekly accomplishments
+        - **AVOID DUPLICATING ISSUES**: Each JIRA issue should be mentioned in only ONE section. If an issue could fit multiple categories, choose the most appropriate section based on priority:
+          1. Epic/Feature Completion (if it's a major deliverable)
+          2. Service Upgrades (if it's infrastructure/operational)
+          3. Top Accomplishments (for general completed work)
+          4. Planning Activities (for preparatory work)
+          5. Collaborative Efforts (for cross-team work)
+          6. Process Improvements (for workflow/tool improvements)
+        - Once an issue is mentioned in one section, do not reference it again in any other section
+
+        Focus on accomplishments that demonstrate team progress, value delivery, 
+        and impact. Present findings in a positive, achievement-oriented format.
+      agent: "weekly_report_analyst"
+      expected_output: "Direct weekly accomplishments report highlighting team achievements, service upgrades, feature completions, planning activities, collaborations, and process improvements with NO thinking process or meta-commentary"
+
+    bugs_summary_analysis_task:
+      description: |
+        Create a short summary of the bugs for the bugs table:
+
+        Bug Details Data: {bugs_data}
+
+        Provide a brief 2-3 sentence summary that describes:
+        - General nature of the bugs (what types of issues)
+        - Priority level impression (mostly high/low priority)
+        - Overall status impression (mostly open or mostly resolved)
+
+        CRITICAL OUTPUT INSTRUCTIONS:
+        - DO NOT include any "Thought:", "Action:", "Observation:" or similar thinking process text
+        - DO NOT count or provide specific numbers
+        - Your response must ONLY contain the final summary content
+        - Keep it very short and simple (2-3 sentences maximum)
+        - Start directly with the summary, no headers or formatting
+        - Use qualitative descriptions, not quantitative counts
+
+        This brief summary will appear above the detailed bugs table.
+      agent: "bugs_summary_analyst"
+      expected_output: "Direct short bugs summary (2-3 sentences) with qualitative description of bug types, priority impression, and status overview with NO counting or numbers" 

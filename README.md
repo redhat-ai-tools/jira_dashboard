@@ -128,6 +128,29 @@ python issues_executive_report.py --project "PROJ1,PROJ2,PROJ3" --days 14 --comp
 **Output**: 
 - `{project}_executive_report.html` - Executive HTML report with strategic insights and automatically linked JIRA issue keys
 
+#### `weekly_report.py`
+**Purpose**: Generate comprehensive weekly accomplishments reports with bugs analysis and feature completions
+
+**Usage**:
+```bash
+# Single project
+python weekly_report.py --project YOUR_PROJECT --days NUMBER_OF_DAYS
+
+
+# With main project for enhanced bug analysis
+python weekly_report.py --project "PROJ1,PROJ2" --days 7 --components "component-x,component-y" --main-project MAIN_PROJ
+```
+
+**Output**: 
+- `weekly_accomplishments_report.html` - Combined HTML report with weekly accomplishments, bugs analysis, and feature completions
+
+**Enhanced Features**:
+- Fetches additional bugs from main project when configured with components
+- Includes feature completions analysis from main project
+- Generates bug summaries with AI analysis
+- Combines multiple project reports into single HTML output
+- **Component mapping**: Components are mapped positionally to projects (1st component → 1st project, 2nd component → 2nd project at the main project, etc.)
+
 **Parameters** (for all individual scripts):
 - `--project` (required): JIRA project key(s) to analyze - single project or comma-separated list
 - `--days` (optional): Number of days to look back for analysis (default: 14)

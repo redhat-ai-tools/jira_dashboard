@@ -701,7 +701,9 @@ def map_priority(priority_id):
         '10200': 'Normal',
         '3': 'Major',
         '1': 'Blocker',
-        '2': 'Critical'
+        '2': 'Critical',
+        '10300': 'Undefined',
+        '4': 'Minor'
     }
     return priority_mapping.get(str(priority_id), str(priority_id))
 
@@ -720,7 +722,8 @@ def map_status(status_id):
         '6': 'Resolved/Closed',
         '10018': 'In Progress',
         '10016': 'New',
-        '12422': 'Review'
+        '12422': 'Review',
+        '10020': 'To Do'
     }
     return status_mapping.get(str(status_id), str(status_id))
 
@@ -767,11 +770,23 @@ def convert_markdown_to_html(text):
     html_text = html_text.replace('\n', '<br>')
     
     # Convert markdown headings to HTML headings
+    # First handle the case where AI outputs mixed headers like "## # HEADING"
+    html_text = re.sub(r'<br>###\s*#+\s*([^<]+?)(?=<br>|$)', r'<br><h3>\1</h3><br>', html_text)
+    html_text = re.sub(r'<br>##\s*#+\s*([^<]+?)(?=<br>|$)', r'<br><h2>\1</h2><br>', html_text)
+    html_text = re.sub(r'<br>#\s*#+\s*([^<]+?)(?=<br>|$)', r'<br><h1>\1</h1><br>', html_text)
+    
+    # Then handle normal markdown headers
     html_text = re.sub(r'<br>###\s*([^<]+?)(?=<br>|$)', r'<br><h3>\1</h3><br>', html_text)
     html_text = re.sub(r'<br>##\s*([^<]+?)(?=<br>|$)', r'<br><h2>\1</h2><br>', html_text)
     html_text = re.sub(r'<br>#\s*([^<]+?)(?=<br>|$)', r'<br><h1>\1</h1><br>', html_text)
     
     # Handle headings at the beginning of text
+    # First handle mixed headers at the beginning
+    html_text = re.sub(r'^###\s*#+\s*([^<]+?)(?=<br>|$)', r'<h3>\1</h3><br>', html_text)
+    html_text = re.sub(r'^##\s*#+\s*([^<]+?)(?=<br>|$)', r'<h2>\1</h2><br>', html_text)
+    html_text = re.sub(r'^#\s*#+\s*([^<]+?)(?=<br>|$)', r'<h1>\1</h1><br>', html_text)
+    
+    # Then handle normal headers at the beginning  
     html_text = re.sub(r'^###\s*([^<]+?)(?=<br>|$)', r'<h3>\1</h3><br>', html_text)
     html_text = re.sub(r'^##\s*([^<]+?)(?=<br>|$)', r'<h2>\1</h2><br>', html_text)
     html_text = re.sub(r'^#\s*([^<]+?)(?=<br>|$)', r'<h1>\1</h1><br>', html_text)
@@ -795,6 +810,25 @@ def convert_markdown_to_html(text):
     
     # Handle single <li> items
     html_text = re.sub(r'<br><li>([^<]*)</li>(?!</ul>)', r'<ul><li>\1</li></ul>', html_text)
+    
+    # Clean up any remaining standalone # symbols in headers
+    html_text = re.sub(r'(<h[1-6]>)\s*#+\s*([^<]*)(</h[1-6]>)', r'\1\2\3', html_text)
+    
+    # Add appropriate emojis to accomplishment headers (works with h1, h2, h3)
+    html_text = re.sub(r'(<h[1-3][^>]*>)([^<]*ACCOMPLISHED[^<]*)(</h[1-3]>)', r'\g<1>🏆 \g<2>\g<3>', html_text, flags=re.IGNORECASE)
+    html_text = re.sub(r'(<h[1-3][^>]*>)([^<]*UPGRADES[^<]*)(</h[1-3]>)', r'\g<1>⚡ \g<2>\g<3>', html_text, flags=re.IGNORECASE)
+    html_text = re.sub(r'(<h[1-3][^>]*>)([^<]*COMPLETION[^<]*)(</h[1-3]>)', r'\g<1>✅ \g<2>\g<3>', html_text, flags=re.IGNORECASE)
+    html_text = re.sub(r'(<h[1-3][^>]*>)([^<]*PLANNING[^<]*)(</h[1-3]>)', r'\g<1>📋 \g<2>\g<3>', html_text, flags=re.IGNORECASE)
+    html_text = re.sub(r'(<h[1-3][^>]*>)([^<]*COLLABORATIVE[^<]*)(</h[1-3]>)', r'\g<1>🤝 \g<2>\g<3>', html_text, flags=re.IGNORECASE)
+    html_text = re.sub(r'(<h[1-3][^>]*>)([^<]*PROCESS[^<]*)(</h[1-3]>)', r'\g<1>🔧 \g<2>\g<3>', html_text, flags=re.IGNORECASE)
+    
+    # Wrap accomplishment sections in special styling
+    html_text = re.sub(
+        r'(<h[1-3][^>]*>[^<]*(?:ACCOMPLISHED|ACHIEVEMENTS|UPGRADES|COMPLETION|PLANNING|COLLABORATIVE|PROCESS)[^<]*</h[1-3]>.*?)(?=<h[1-3]|$)', 
+        r'<div class="accomplishment-category">\1</div>', 
+        html_text, 
+        flags=re.DOTALL | re.IGNORECASE
+    )
     
     # Clean up extra <br> tags
     html_text = re.sub(r'<br>(<[h|u])', r'\1', html_text)
