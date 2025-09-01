@@ -33,7 +33,7 @@ gemini_api_key = os.getenv("GEMINI_API_KEY")
 snowflake_token = os.getenv("SNOWFLAKE_TOKEN")
 url = os.getenv("SNOWFLAKE_URL")
 jira_base_url = os.getenv("JIRA_BASE_URL")
-main_project = os.getenv("MAIN_PROJECT")
+main_project = os.getenv("MAIN_PROJECT")  # Can be None, will be overridden by CLI args if provided
 
 llm = LLM(
     model="gemini/gemini-2.5-flash",
@@ -50,7 +50,7 @@ server_params = {
     }
 }
 
-def main(analysis_period_days=7, projects=None, components=None, components_provided=False):
+def main(analysis_period_days=7, projects=None, components=None, components_provided=False, main_project_override=None):
     """Main function to generate weekly accomplishments report
     
     Args:
@@ -58,6 +58,7 @@ def main(analysis_period_days=7, projects=None, components=None, components_prov
         projects (list): List of JIRA project keys to analyze (required)
         components (str): Optional comma-separated components to filter by (e.g., 'component-x,component-y')
         components_provided (bool): Whether components were explicitly provided via CLI
+        main_project_override (str): Optional main project override (takes precedence over env var)
     """
     if not projects:
         raise ValueError("Project parameter is required. Please specify JIRA project key(s) using --project.")
@@ -65,21 +66,24 @@ def main(analysis_period_days=7, projects=None, components=None, components_prov
     # Normalize to uppercase and remove duplicates while preserving order
     projects = list(dict.fromkeys([p.upper() for p in projects]))
     
+    # Use main_project_override if provided, otherwise use environment variable
+    effective_main_project = main_project_override or main_project
+    
     print(f"📊 Weekly Accomplishments Report Generator")
     print("="*80)
     print(f"📋 This will analyze weekly accomplishments from {len(projects)} project(s): {', '.join(projects)}")
     print(f"🕒 Analysis period: Last {analysis_period_days} days")
     print(f"📄 Output file: weekly_accomplishments_report.html")
     # Check if any project is the main project
-    main_project_in_list = main_project and main_project in projects
-    other_projects_exist = main_project and any(main_project != p for p in projects)
+    main_project_in_list = effective_main_project and effective_main_project in projects
+    other_projects_exist = effective_main_project and any(effective_main_project != p for p in projects)
     
     if main_project_in_list and other_projects_exist and components_provided:
-        print(f"🎯 Enhanced mode: Project bugs + MAIN_PROJECT ({main_project}) component filtering + feature completions")
+        print(f"🎯 Enhanced mode: Project bugs + MAIN_PROJECT ({effective_main_project}) component filtering + feature completions")
     elif main_project_in_list and components_provided:
-        print(f"🎯 Enhanced mode: MAIN_PROJECT ({main_project}) with component filtering + feature completions")
+        print(f"🎯 Enhanced mode: MAIN_PROJECT ({effective_main_project}) with component filtering + feature completions")
     elif other_projects_exist and components_provided:
-        print(f"🎯 Enhanced mode: Project bugs + MAIN_PROJECT ({main_project}) bugs & feature completions")
+        print(f"🎯 Enhanced mode: Project bugs + MAIN_PROJECT ({effective_main_project}) bugs & feature completions")
     else:
         print(f"🎯 Standard mode: Project bugs only")
     print("="*80)
@@ -108,7 +112,7 @@ def main(analysis_period_days=7, projects=None, components=None, components_prov
                 
                 try:
                     project_data = analyze_single_project(
-                        analysis_period_days, project, components, agents, tasks_config, main_project, projects, components_provided
+                        analysis_period_days, project, components, agents, tasks_config, effective_main_project, projects, components_provided
                     )
                     print(f"🔍 DEBUG: project_data type for {project}: {type(project_data)}")
                     print(f"🔍 DEBUG: project_data content: {project_data}")
@@ -1215,18 +1219,9 @@ if __name__ == "__main__":
     
     # Handle main project - CLI overrides env var
     if args.main_project:
-        # Temporarily override the environment variable
-        original_main_project = os.getenv("MAIN_PROJECT")
-        os.environ["MAIN_PROJECT"] = args.main_project
         print(f"🎯 Using main project from CLI: {args.main_project}")
     
     # Determine if components were explicitly provided
     components_provided = args.components is not None
     
-    main(analysis_period_days=args.days, projects=projects, components=components, components_provided=components_provided)
-    
-    # Restore original environment if we changed it
-    if args.main_project and original_main_project:
-        os.environ["MAIN_PROJECT"] = original_main_project
-    elif args.main_project:
-        del os.environ["MAIN_PROJECT"]
+    main(analysis_period_days=args.days, projects=projects, components=components, components_provided=components_provided, main_project_override=args.main_project)
