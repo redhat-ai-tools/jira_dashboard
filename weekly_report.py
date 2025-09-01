@@ -636,8 +636,24 @@ def generate_combined_html_report(projects, project_reports, analysis_period_day
             # Generate bugs table if there are bugs
             bugs_section = ""
             if bugs:
-                bugs_table_rows = ""
+                # Separate bugs into open and resolved/closed
+                open_bugs = []
+                resolved_bugs = []
+                
                 for bug in bugs:
+                    status = bug.get('status', 'Unknown')
+                    status_label = map_status(status)
+                    
+                    # Check if bug is resolved/closed (status 6 = Resolved/Closed)
+                    if str(status) == '6' or 'resolved' in status_label.lower() or 'closed' in status_label.lower():
+                        resolved_bugs.append(bug)
+                    else:
+                        open_bugs.append(bug)
+                
+                bugs_table_rows = ""
+                
+                # Add open bugs first
+                for bug in open_bugs:
                     bug_key = bug.get('key', 'Unknown')
                     bug_link = f"{jira_base_url}{bug_key}" if jira_base_url else f"#{bug_key}"
                     bug_title = bug.get('summary', 'No summary')
@@ -655,6 +671,37 @@ def generate_combined_html_report(projects, project_reports, analysis_period_day
                     </tr>
                     """
                 
+                # Add separator row if we have both open and resolved bugs
+                if open_bugs and resolved_bugs:
+                    bugs_table_rows += f"""
+                    <tr class="bugs-separator">
+                        <td colspan="4" class="separator-cell">
+                            <div class="separator-line"></div>
+                            <span class="separator-text">Resolved/Closed Issues ({len(resolved_bugs)})</span>
+                            <div class="separator-line"></div>
+                        </td>
+                    </tr>
+                    """
+                
+                # Add resolved bugs
+                for bug in resolved_bugs:
+                    bug_key = bug.get('key', 'Unknown')
+                    bug_link = f"{jira_base_url}{bug_key}" if jira_base_url else f"#{bug_key}"
+                    bug_title = bug.get('summary', 'No summary')
+                    
+                    # Map IDs to human-readable labels using helper functions
+                    status_label = map_status(bug.get('status', 'Unknown'))
+                    priority_label = map_priority(bug.get('priority', 'Unknown'))
+                    
+                    bugs_table_rows += f"""
+                    <tr class="resolved-bug">
+                        <td><a href="{bug_link}" target="_blank" class="jira-link">{bug_key}</a></td>
+                        <td>{bug_title}</td>
+                        <td>{status_label}</td>
+                        <td>{priority_label}</td>
+                    </tr>
+                    """
+                
                 # Add bug summary above the table if available
                 bug_summary_html = ""
                 if bug_summary:
@@ -664,9 +711,14 @@ def generate_combined_html_report(projects, project_reports, analysis_period_day
                     </div>
                     """
                 
+                # Create header with open vs total count
+                open_count = len(open_bugs)
+                total_count = len(bugs)
+                bugs_header = f"🐛 Bugs ({open_count} open, {total_count} total)"
+                
                 bugs_section = f"""
                 <div class="bugs-section">
-                    <h3>🐛 Bugs ({bug_count} total)</h3>
+                    <h3>{bugs_header}</h3>
                     {bug_summary_html}
                     <div class="table-container">
                         <table class="bugs-table">
@@ -1017,6 +1069,41 @@ def generate_combined_html_report(projects, project_reports, analysis_period_day
         }}
         .bugs-table tr:last-child td {{
             border-bottom: none;
+        }}
+        .bugs-separator {{
+            background: #f8f9fa !important;
+        }}
+        .bugs-separator:hover {{
+            background: #f8f9fa !important;
+        }}
+        .separator-cell {{
+            padding: 15px 12px !important;
+            text-align: center;
+            border-top: 2px solid #dee2e6;
+            border-bottom: 2px solid #dee2e6;
+        }}
+        .separator-cell .separator-line {{
+            display: inline-block;
+            width: 30%;
+            height: 1px;
+            background: #6c757d;
+            vertical-align: middle;
+        }}
+        .separator-text {{
+            display: inline-block;
+            padding: 0 15px;
+            font-weight: 600;
+            color: #6c757d;
+            font-size: 0.9em;
+            vertical-align: middle;
+        }}
+        .resolved-bug {{
+            opacity: 0.7;
+            background: #f8f9fa;
+        }}
+        .resolved-bug:hover {{
+            opacity: 1;
+            background: #e9ecef;
         }}
         
         /* Print styles */

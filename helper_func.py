@@ -723,7 +723,8 @@ def map_status(status_id):
         '10018': 'In Progress',
         '10016': 'New',
         '12422': 'Review',
-        '10020': 'To Do'
+        '10020': 'To Do',
+        '14221': 'Waiting'
     }
     return status_mapping.get(str(status_id), str(status_id))
 
