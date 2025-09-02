@@ -24,14 +24,15 @@ from helper_func import (
     post_process_summary_timestamps
 )
 
-# Configure Gemini LLM
-gemini_api_key = os.getenv("GEMINI_API_KEY")
+# Configure LLM
+model_api_key = os.getenv("MODEL_API_KEY")
+model_name = os.getenv("MODEL_NAME", "gemini/gemini-2.5-flash")
 snowflake_token = os.getenv("SNOWFLAKE_TOKEN")
 url = os.getenv("SNOWFLAKE_URL")
 
 llm = LLM(
-    model="gemini/gemini-2.5-pro",
-    api_key=gemini_api_key,
+    model=model_name,
+    api_key=model_api_key,
     temperature=0.1,
 )
 
@@ -95,8 +96,8 @@ def analyze_single_project(analysis_period_days, project, components=None):
     print("🔍 Looking for epics where connected issues were updated recently")
     print("📝 Will generate comprehensive summaries for active epics")
     
-    if not gemini_api_key:
-        print("⚠️  Warning: GEMINI_API_KEY environment variable not set")
+    if not model_api_key:
+        print("⚠️  Warning: MODEL_API_KEY environment variable not set")
         return
     
     try:

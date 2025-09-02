@@ -18,14 +18,15 @@ from helper_func import (
     BugCalculator, extract_html_from_result
 )
 
-# Configure Gemini LLM (as recommended in CrewAI SSE documentation)
-gemini_api_key = os.getenv("GEMINI_API_KEY")
+# Configure LLM (as recommended in CrewAI SSE documentation)
+model_api_key = os.getenv("MODEL_API_KEY")
+model_name = os.getenv("MODEL_NAME", "gemini/gemini-2.5-flash")
 snowflake_token = os.getenv("SNOWFLAKE_TOKEN")
 url = os.getenv("SNOWFLAKE_URL")
 
 llm = LLM(
-    model="gemini/gemini-2.5-pro",
-    api_key=gemini_api_key,
+    model=model_name,
+    api_key=model_api_key,
     temperature=0.7,
 )
 
@@ -103,10 +104,10 @@ def main(project=None, timeframe_days=14):
         print(f"📊 Analysis timeframe: {timeframe_days} days")
         print(f"📡 Connecting to MCP Server: {server_params['url']}")
         
-        # Check if Gemini API key is available
-        if not gemini_api_key:
-            print("⚠️  Warning: GEMINI_API_KEY environment variable not set")
-            print("💡 Please set GEMINI_API_KEY before running this script")
+        # Check if model API key is available
+        if not model_api_key:
+            print("⚠️  Warning: MODEL_API_KEY environment variable not set")
+            print("💡 Please set MODEL_API_KEY before running this script")
             create_fallback_dashboard(project)
             return
         
@@ -378,7 +379,7 @@ def create_fallback_dashboard(project=None):
         <p>Could not connect to JIRA Snowflake MCP server.</p>
         <p>Please check your network connection and server configuration.</p>
         <p><strong>Server:</strong> {url}</p>
-        <p><strong>API Key:</strong> Please ensure GEMINI_API_KEY is set in your environment</p>
+        <p><strong>API Key:</strong> Please ensure MODEL_API_KEY is set in your environment</p>
     </div>
 </body>
 </html>'''

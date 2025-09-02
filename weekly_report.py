@@ -28,16 +28,17 @@ from helper_func import (
     convert_markdown_to_html,
 )
 
-# Configure Gemini LLM
-gemini_api_key = os.getenv("GEMINI_API_KEY")
+# Configure LLM
+model_api_key = os.getenv("MODEL_API_KEY")
+model_name = os.getenv("MODEL_NAME", "gemini/gemini-2.5-flash")
 snowflake_token = os.getenv("SNOWFLAKE_TOKEN")
 url = os.getenv("SNOWFLAKE_URL")
 jira_base_url = os.getenv("JIRA_BASE_URL")
 main_project = os.getenv("MAIN_PROJECT")  # Can be None, will be overridden by CLI args if provided
 
 llm = LLM(
-    model="gemini/gemini-2.5-flash",
-    api_key=gemini_api_key,
+    model=model_name,
+    api_key=model_api_key,
     temperature=0.1,
 )
 
@@ -88,8 +89,8 @@ def main(analysis_period_days=7, projects=None, components=None, components_prov
         print(f"🎯 Standard mode: Project bugs only")
     print("="*80)
     
-    if not gemini_api_key:
-        print("⚠️  Warning: GEMINI_API_KEY environment variable not set")
+    if not model_api_key:
+        print("⚠️  Warning: MODEL_API_KEY environment variable not set")
         return
     
     # Store individual project reports

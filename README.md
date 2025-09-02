@@ -27,11 +27,19 @@ A comprehensive JIRA reporting and analysis system powered by CrewAI agents and 
 Set the following environment variables:
 
 ```bash
-export GEMINI_API_KEY="your_gemini_api_key_here"
+export MODEL_API_KEY="your_model_api_key_here"
+export MODEL_NAME="gemini/gemini-2.5-flash"  # Recommended model (default if not set)
 export SNOWFLAKE_TOKEN="your_snowflake_token_here"
 export SNOWFLAKE_URL="jira_mcp_snowflake_url_here"
 export JIRA_BASE_URL="https://your-jira-instance.com/browse/"  # Required for JIRA issue linking in HTML reports
 ```
+
+**Model Configuration**:
+- `MODEL_API_KEY`: Your model API key (e.g., Google AI Studio API key for Gemini models)
+- `MODEL_NAME`: The model to use (default: `gemini/gemini-2.5-flash`)
+  - **Recommended**: `gemini/gemini-2.5-flash` for optimal balance of speed and quality
+  - Alternative: `gemini/gemini-2.5-pro` for enhanced analysis quality (slower/more expensive)
+  - You can use any model supported by the CrewAI LLM class
 
 ### 2. Install Dependencies
 
@@ -374,7 +382,8 @@ result = crew.kickoff()
 ### Example Workflow
 ```bash
 # Set environment variables
-export GEMINI_API_KEY="your_api_key"
+export MODEL_API_KEY="your_model_api_key"
+export MODEL_NAME="gemini/gemini-2.5-flash"  # Optional, this is the default
 export SNOWFLAKE_TOKEN="your_token"
 export SNOWFLAKE_URL="your_snowflake_url"
 
