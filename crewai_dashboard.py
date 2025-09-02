@@ -30,6 +30,8 @@ llm = LLM(
     temperature=0.7,
 )
 
+print(f"🤖 Using model: {model_name}")
+
 # MCP Server configuration for JIRA Snowflake (SSE Server)
 # Following the exact pattern from CrewAI MCP documentation
 server_params = {

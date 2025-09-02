@@ -35,6 +35,8 @@ llm = LLM(
     temperature=0.1,
 )
 
+print(f"🤖 Using model: {model_name}")
+
 # MCP Server configuration
 server_params = {
     "url": url,

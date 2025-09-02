@@ -38,8 +38,7 @@ export JIRA_BASE_URL="https://your-jira-instance.com/browse/"  # Required for JI
 - `MODEL_API_KEY`: Your model API key (e.g., Google AI Studio API key for Gemini models)
 - `MODEL_NAME`: The model to use (default: `gemini/gemini-2.5-flash`)
   - **Recommended**: `gemini/gemini-2.5-flash` for optimal balance of speed and quality
-  - Alternative: `gemini/gemini-2.5-pro` for enhanced analysis quality (slower/more expensive)
-  - You can use any model supported by the CrewAI LLM class
+  - **Available models**: See the [Gemini API models documentation](https://ai.google.dev/gemini-api/docs/models) for all available models and their capabilities
 
 ### 2. Install Dependencies
 
